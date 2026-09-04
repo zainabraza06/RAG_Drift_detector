@@ -48,7 +48,11 @@ class TestBootstrapAndHealth:
         assert info["vector_store"]["reachable"] is True
         assert info["vector_store"]["document_count"] == 32
         assert info["active_golden_set"]["name"] == "acme-cloud-support"
-        assert info["schema_revision"] == "0002_drift_events"
+        # Compared against the migration head rather than a literal, so a
+        # new migration does not break an unrelated test.
+        from app.db.migrations import head_revision
+
+        assert info["schema_revision"] == head_revision()
 
     def test_health_reports_both_dependencies(self, api_client: TestClient) -> None:
         response = api_client.get(f"{API}/health")
@@ -555,3 +559,102 @@ class TestIsolation:
         """
         info = api_client.get(f"{API}/system/info").json()
         assert info["vector_store"]["document_count"] == 32
+
+
+class TestDiagnosticsEndpoint:
+    def _degrade(self, api_client: TestClient) -> str:
+        for _ in range(2):
+            api_client.post(f"{API}/runs", json={})
+        api_client.app.state.vector_store.delete_documents(  # type: ignore[attr-defined]
+            [
+                "doc-api-001",
+                "doc-api-002",
+                "doc-auth-003",
+                "doc-security-003",
+                "doc-data-002",
+                "doc-support-003",
+            ]
+        )
+        run_id: str = api_client.post(f"{API}/runs", json={}).json()["run_id"]
+        return run_id
+
+    def test_a_regression_gets_a_ranked_heuristic_report(
+        self, api_client: TestClient
+    ) -> None:
+        run_id = self._degrade(api_client)
+        body = api_client.get(f"{API}/runs/{run_id}/diagnostics").json()
+
+        assert body["basis"] == "heuristic"
+        assert "not statistical findings" in body["disclaimer"]
+
+        findings = body["findings"]
+        assert findings, "a deleted-document regression should produce findings"
+        # Most direct evidence first.
+        assert findings[0]["rule_id"] == "missing_expected_documents"
+        assert findings[0]["strength"] == "direct"
+        assert findings[0]["explains"] == findings[0]["out_of"]
+        assert [f["strength"] for f in findings] == sorted(
+            (f["strength"] for f in findings),
+            key=lambda s: ["direct", "circumstantial", "contextual"].index(s),
+        )
+
+    def test_the_report_says_what_it_ruled_out(self, api_client: TestClient) -> None:
+        run_id = self._degrade(api_client)
+        body = api_client.get(f"{API}/runs/{run_id}/diagnostics").json()
+
+        # Negative results matter: a report that only ever shows hits looks
+        # like it is fishing.
+        assert "embedding_model_changed" in body["checks_passed"]
+        assert "expected_documents_demoted" in body["checks_passed"]
+
+    def test_diagnostics_are_attached_to_the_drift_assessment(
+        self, api_client: TestClient
+    ) -> None:
+        run_id = self._degrade(api_client)
+        body = api_client.get(f"{API}/runs/{run_id}/drift").json()
+
+        assert body["verdict"] == "degraded"
+        assert body["diagnostics"]["basis"] == "heuristic"
+        # The statistical fields and the heuristic ones stay in separate
+        # objects, so a client can never confuse their standing.
+        assert "p_value_adjusted" in body["comparisons"][0]
+        assert not any(
+            "p_value" in key or "confidence" in key
+            for key in body["diagnostics"]["findings"][0]
+        )
+
+    def test_a_healthy_run_gets_no_diagnostics(self, api_client: TestClient) -> None:
+        api_client.post(f"{API}/runs", json={})
+        second = api_client.post(f"{API}/runs", json={}).json()
+
+        drift = api_client.get(f"{API}/runs/{second['run_id']}/drift").json()
+        assert drift["verdict"] == "stable"
+        # Diagnostics explain a regression the statistics established; they
+        # are never produced speculatively for a healthy run.
+        assert drift["diagnostics"] is None
+
+        response = api_client.get(f"{API}/runs/{second['run_id']}/diagnostics")
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "diagnostics_unavailable"
+
+    def test_diagnostics_survive_a_round_trip_through_the_database(
+        self, api_client: TestClient
+    ) -> None:
+        run_id = self._degrade(api_client)
+        first = api_client.get(f"{API}/runs/{run_id}/diagnostics").json()
+        # Second read comes from the stored event rather than being recomputed.
+        second = api_client.get(f"{API}/runs/{run_id}/diagnostics").json()
+
+        assert first["findings"] == second["findings"]
+        assert first["checks_passed"] == second["checks_passed"]
+
+    def test_diagnostics_appear_in_the_drift_events_feed(
+        self, api_client: TestClient
+    ) -> None:
+        self._degrade(api_client)
+        page = api_client.get(
+            f"{API}/drift/events", params={"verdict": "degraded"}
+        ).json()
+
+        assert page["total"] == 1
+        assert page["items"][0]["diagnostics"]["findings"]
