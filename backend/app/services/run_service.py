@@ -11,17 +11,17 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from app.core.errors import DriftDetectorError
+from app.core.errors import RunNotFoundError
 from app.domain.history import MetricSeries, Page, RunDetail, RunRecord
 from app.repositories.runs import RunRepository
+from app.services.drift_service import DriftService
 from app.services.golden_set_service import GoldenSetService
 from app.services.scoring.engine import ScoringEngine
 
 logger = logging.getLogger(__name__)
 
-
-class RunNotFoundError(DriftDetectorError):
-    """The requested run does not exist."""
+# Re-exported: this was the error's original home, and callers import it here.
+__all__ = ["RunNotFoundError", "RunService", "metric_deltas"]
 
 
 class RunService:
@@ -33,10 +33,12 @@ class RunService:
         engine: ScoringEngine,
         runs: RunRepository,
         golden_sets: GoldenSetService,
+        drift: DriftService | None = None,
     ) -> None:
         self._engine = engine
         self._runs = runs
         self._golden_sets = golden_sets
+        self._drift = drift
 
     # ------------------------------------------------------------------
     # Execution
@@ -53,9 +55,15 @@ class RunService:
             trigger,
         )
         result = self._engine.evaluate(stored.golden_set)
-        return self._runs.save(
+        record = self._runs.save(
             result, golden_set_id=stored.golden_set_id, trigger=trigger
         )
+        if self._drift is not None:
+            # Assessing here means a run is never sitting in history without a
+            # verdict. It cannot fail the evaluation: the run is already saved,
+            # and assess_if_possible swallows and logs anything that goes wrong.
+            self._drift.assess_if_possible(record.run_id)
+        return record
 
     # ------------------------------------------------------------------
     # History

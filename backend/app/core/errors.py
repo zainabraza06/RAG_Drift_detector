@@ -42,3 +42,11 @@ class UnknownEmbeddingProviderError(ConfigurationError):
 
 class EvaluationError(DriftDetectorError):
     """A scoring run could not be completed."""
+
+
+class RunNotFoundError(DriftDetectorError):
+    """The requested evaluation run does not exist."""
+
+
+class DriftDetectionError(DriftDetectorError):
+    """A drift assessment could not be produced."""
