@@ -63,9 +63,19 @@ class Settings(BaseSettings):
     # -- Demo data ------------------------------------------------------
     demo_dir: Path = Field(default=REPO_ROOT / "demo")
 
-    # -- Persistence (Stage 2) -----------------------------------------
+    # -- Persistence ----------------------------------------------------
     database_url: str | None = Field(
         default=None, description="Defaults to sqlite:///<data_dir>/driftdetector.db"
+    )
+    auto_migrate: bool = Field(
+        default=True,
+        description="Apply Alembic migrations on startup. Disable to gate schema "
+        "changes behind a deliberate deploy step.",
+    )
+    bootstrap_demo: bool = Field(
+        default=True,
+        description="On a fresh install, index the demo corpus and import the demo "
+        "golden set so the dashboard is explorable immediately.",
     )
 
     # -- API ------------------------------------------------------------
