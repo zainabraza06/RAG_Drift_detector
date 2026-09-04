@@ -29,8 +29,8 @@ Built in stages, each one working end to end before the next begins.
 | 2 | Historical tracking (SQLite) + REST API | ✅ Done |
 | 3 | Statistical drift detection | ✅ Done |
 | 4 | Root-cause diagnostics rule engine | ✅ Done |
-| 5 | React + TypeScript dashboard | ⬜ Next |
-| 6 | Docker packaging + full documentation | ⬜ |
+| 5 | React + TypeScript dashboard | ✅ Done |
+| 6 | Docker packaging + full documentation | ⬜ Next |
 
 ---
 
@@ -165,6 +165,64 @@ Every error shares one envelope:
 ```
 
 Clients branch on `code`; `message` wording is free to change.
+
+---
+
+## Dashboard
+
+```bash
+cd backend && python -m app.cli serve     # API on :8000
+cd frontend && npm install && npm run dev # UI on :5173, proxying /api
+```
+
+Four views: **Dashboard** (health, headline metrics, run action), **Trends**
+(four charts with regressions marked in place), **Drift events** (expandable
+timeline with full statistical reasoning), **Golden set** (validated editor).
+
+React 18 + TypeScript strict + Tailwind + Recharts, with dark mode, a
+responsive shell, and route-level code splitting that keeps the initial bundle
+at ~89 kB gzipped by deferring Recharts to the trends route.
+
+### The framing boundary is enforced in the UI too
+
+The care taken in Stages 3 and 4 would be wasted if the interface flattened it
+back out, so the two halves are kept visually and structurally apart:
+
+* The statistical verdict and the heuristic diagnostics are **separate
+  components** in separate sections, never one merged list.
+* The diagnostics panel's *"these are heuristics, not statistical findings"*
+  notice sits **above** the findings. A disclaimer below the conclusions is
+  read after they have already landed. There is a test asserting the document
+  order.
+* Evidence strength renders as a **word** — `Direct`, `Circumstantial`,
+  `Context` — never a bar or a percentage. A test fails if a `progressbar` or
+  a "% confident" string ever appears in the rendered tree, because that is
+  precisely how a numeric confidence would sneak back in.
+* A finding that cannot honestly count queries shows **no** coverage figure
+  rather than a fabricated one.
+* "Ruled out" and "could not check" stay visually distinct.
+
+### Other decisions worth noting
+
+**"Unknown" is not green.** A system never compared against a baseline is not
+*known* to be healthy, so the traffic light shows grey, matching the backend.
+
+**Significance and materiality are shown separately.** A change can be
+statistically real and operationally irrelevant; a UI that merged them into one
+badge would hide the distinction the detector is careful to make.
+
+**Deltas are in points, not percent.** "Recall fell 4.2%" is ambiguous between
+an absolute and a relative change.
+
+**Chart axes are padded, not pinned to [0, 1].** Retrieval metrics sit in a
+narrow band near the top, and a full-range axis flattens exactly the movement
+this tool exists to surface — but the axis never exceeds [0, 1], so a shape
+cannot read as more dramatic than it is.
+
+**Every state is designed.** Skeletons mirror the shape of what they replace so
+the layout does not jump; empty states say what to do next; error states use
+the API's error `code` to say something specific and offer retry only when
+retrying could help.
 
 ---
 
