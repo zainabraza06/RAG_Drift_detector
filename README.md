@@ -626,10 +626,50 @@ only when the expected documents are *verifiably still in the index*.
                │ docker network
 ┌──────────────▼──────────────────────┐
 │  backend (uvicorn :8000)            │
-│  FastAPI · Chroma · SQLite          │
-│  /app/data ──► named volume         │   SQLite file and Chroma index together
+│  FastAPI · SQLAlchemy · SciPy       │
+│  /app/data ──► drift-data volume    │   run history (SQLite)
+└──────────────┬──────────────────────┘
+               │ HTTP
+┌──────────────▼──────────────────────┐
+│  chroma (server :8000)              │
+│  /data ──────► chroma-data volume   │   the vector index
 └─────────────────────────────────────┘
 ```
+
+### Why Chroma runs as a server and not as an embedded client
+
+This is a correctness requirement, not a preference, and it is the single most
+important thing to understand about deploying this tool.
+
+`chromadb.PersistentClient` caches a collection's vector segment in memory for
+the life of the process, and does **not** observe writes made by another
+process. Reopening the client does not help either — chromadb caches the
+underlying `System` per path, so a "fresh" client hands back the same stale
+segment.
+
+A drift detector reads an index that some *other* pipeline writes. With an
+embedded client it would keep scoring the index as it looked when the API
+booted, and would never notice the change it exists to detect — while still
+reporting a correct document count, because `count()` reads metadata rather
+than the cached segment. That combination is worse than an outright failure:
+the numbers look plausible and are silently wrong.
+
+Measured, with the index served by a Chroma server and six expected documents
+deleted by a separate process:
+
+```
+run 1   docs=32   recall@5=0.9333      # healthy
+                                       # another process deletes 6 documents
+run 2   docs=26   recall@5=0.7667      # detected
+```
+
+With the embedded client, `run 2` returned `docs=26` and `recall@5=0.9333` —
+the count moved, the retrieval did not.
+
+If you point this tool at your own index, use a Chroma server
+(`DRIFT_CHROMA_MODE=http`). The embedded `persistent` mode is only safe when
+nothing else writes the index, which in practice means local development and
+the test suite.
 
 Both images are multi-stage and copy dependency manifests before source, so a
 code change does not invalidate the slow install layer. The backend runs as an
@@ -764,7 +804,7 @@ recorded `model_id` makes the swap visible.
 ## Development
 
 ```bash
-# Backend — 272 tests, mypy --strict clean across 62 modules
+# Backend — 279 tests, mypy --strict clean across 62 modules
 cd backend
 python -m pytest
 python -m ruff check app tests alembic
