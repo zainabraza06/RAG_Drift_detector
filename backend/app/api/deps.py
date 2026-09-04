@@ -82,9 +82,13 @@ def get_golden_set_service(session: SessionDep) -> GoldenSetService:
 GoldenSetServiceDep = Annotated[GoldenSetService, Depends(get_golden_set_service)]
 
 
-def get_drift_service(session: SessionDep) -> DriftService:
+def get_drift_service(
+    session: SessionDep, vector_store: VectorStoreDep
+) -> DriftService:
     return DriftService(
-        runs=RunRepository(session), drift=DriftRepository(session)
+        runs=RunRepository(session),
+        drift=DriftRepository(session),
+        vector_store=vector_store,
     )
 
 

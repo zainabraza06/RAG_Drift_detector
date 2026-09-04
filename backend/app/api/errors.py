@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from app.core.errors import (
     CollectionNotFoundError,
     ConfigurationError,
+    DiagnosticsUnavailableError,
     DriftDetectorError,
     EvaluationError,
     GoldenSetError,
@@ -42,6 +43,11 @@ logger = logging.getLogger(__name__)
 #: Most specific first - the first matching entry wins.
 _ERROR_MAP: tuple[tuple[type[DriftDetectorError], int, str], ...] = (
     (RunNotFoundError, status.HTTP_404_NOT_FOUND, "run_not_found"),
+    (
+        DiagnosticsUnavailableError,
+        status.HTTP_404_NOT_FOUND,
+        "diagnostics_unavailable",
+    ),
     (GoldenSetNotFoundError, status.HTTP_404_NOT_FOUND, "golden_set_not_found"),
     (DuplicateGoldenSetError, status.HTTP_409_CONFLICT, "golden_set_exists"),
     (NoActiveGoldenSetError, status.HTTP_409_CONFLICT, "no_active_golden_set"),

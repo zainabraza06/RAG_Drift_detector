@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, Query, Response, status
 
 from app.api.deps import DriftServiceDep, RunServiceDep
 from app.api.schemas import RunRequest
+from app.domain.diagnostics import DiagnosticReport
 from app.domain.drift import DriftAssessment
 from app.domain.history import Page, RunDetail, RunRecord
 
@@ -132,3 +133,22 @@ def get_run_drift(
     if recompute:
         return service.assess(run_id)
     return service.get_for_run(run_id)
+
+
+@router.get(
+    "/{run_id}/diagnostics",
+    response_model=DiagnosticReport,
+    summary="Heuristic root-cause report for one run",
+    responses={
+        404: {"description": "No such run, or no diagnostics were produced."}
+    },
+)
+def get_run_diagnostics(run_id: str, service: DriftServiceDep) -> DiagnosticReport:
+    """Ranked hypotheses for why a run regressed.
+
+    Heuristics, not statistics. The payload carries `basis: "heuristic"` and a
+    disclaimer for exactly that reason, and it is only produced for runs whose
+    verdict is `degraded` -- diagnostics explain a regression the statistics
+    established, they never establish one.
+    """
+    return service.diagnostics_for_run(run_id)
