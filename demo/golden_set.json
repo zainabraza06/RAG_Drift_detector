@@ -1,0 +1,224 @@
+{
+  "name": "acme-cloud-support",
+  "version": "1",
+  "description": "Hand-written golden set for the Acme Cloud demo corpus: real support questions paired with the document that should answer them. A few queries carry graded relevance so NDCG is exercised meaningfully.",
+  "queries": [
+    {
+      "query_id": "q-invoice-download",
+      "query": "where do I download a copy of last month's invoice",
+      "expected_documents": [
+        { "document_id": "doc-billing-001", "relevance": 3 }
+      ],
+      "note": "Direct lookup; should be an easy win for any healthy index."
+    },
+    {
+      "query_id": "q-change-card",
+      "query": "how do I update the credit card we pay with",
+      "expected_documents": [
+        { "document_id": "doc-billing-002", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-refund-downgrade",
+      "query": "do we get money back if we downgrade our plan mid month",
+      "expected_documents": [
+        { "document_id": "doc-billing-003", "relevance": 3 },
+        { "document_id": "doc-billing-001", "relevance": 1 }
+      ],
+      "note": "Graded: the refund policy is the answer, the invoice page is weakly related."
+    },
+    {
+      "query_id": "q-overage",
+      "query": "what happens when we go over the included api call allowance",
+      "expected_documents": [
+        { "document_id": "doc-billing-004", "relevance": 3 },
+        { "document_id": "doc-api-001", "relevance": 1 }
+      ]
+    },
+    {
+      "query_id": "q-password-reset",
+      "query": "user forgot their password and cannot sign in",
+      "expected_documents": [
+        { "document_id": "doc-auth-001", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-2fa-recovery",
+      "query": "lost my authenticator app, how do I use recovery codes",
+      "expected_documents": [
+        { "document_id": "doc-auth-002", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-saml-setup",
+      "query": "set up single sign on with Okta using SAML metadata",
+      "expected_documents": [
+        { "document_id": "doc-auth-003", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-key-rotation",
+      "query": "we leaked an api key secret, how do we rotate it safely",
+      "expected_documents": [
+        { "document_id": "doc-auth-004", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-idle-timeout",
+      "query": "can admins force users to be signed out after inactivity",
+      "expected_documents": [
+        { "document_id": "doc-auth-005", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-429",
+      "query": "getting HTTP 429 with a Retry-After header from the api",
+      "expected_documents": [
+        { "document_id": "doc-api-001", "relevance": 3 },
+        { "document_id": "doc-api-004", "relevance": 1 }
+      ]
+    },
+    {
+      "query_id": "q-pagination",
+      "query": "how do cursors work for paging through list endpoints",
+      "expected_documents": [
+        { "document_id": "doc-api-002", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-webhook-retry",
+      "query": "our webhook endpoint was disabled after repeated failures",
+      "expected_documents": [
+        { "document_id": "doc-api-003", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-error-codes",
+      "query": "should I match on the error message text or the code",
+      "expected_documents": [
+        { "document_id": "doc-api-004", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-deprecation",
+      "query": "how much notice do we get before a breaking api change",
+      "expected_documents": [
+        { "document_id": "doc-api-005", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-self-host",
+      "query": "run the whole stack ourselves with docker compose",
+      "expected_documents": [
+        { "document_id": "doc-deploy-001", "relevance": 3 },
+        { "document_id": "doc-deploy-002", "relevance": 1 }
+      ]
+    },
+    {
+      "query_id": "q-upgrade-downtime",
+      "query": "upgrade the self hosted version without taking downtime",
+      "expected_documents": [
+        { "document_id": "doc-deploy-003", "relevance": 3 },
+        { "document_id": "doc-deploy-004", "relevance": 1 }
+      ]
+    },
+    {
+      "query_id": "q-backup-restore",
+      "query": "what do we need to back up for a consistent restore",
+      "expected_documents": [
+        { "document_id": "doc-deploy-005", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-encryption",
+      "query": "is customer data encrypted at rest and which cipher",
+      "expected_documents": [
+        { "document_id": "doc-security-001", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-roles",
+      "query": "difference between the admin, member and viewer roles",
+      "expected_documents": [
+        { "document_id": "doc-security-002", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-audit-siem",
+      "query": "stream the audit log into our SIEM",
+      "expected_documents": [
+        { "document_id": "doc-security-003", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-vuln-disclosure",
+      "query": "how do I responsibly report a security vulnerability",
+      "expected_documents": [
+        { "document_id": "doc-security-004", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-deleted-restore",
+      "query": "can we restore records that were deleted last week",
+      "expected_documents": [
+        { "document_id": "doc-data-001", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-export",
+      "query": "export everything in the workspace including uploaded files",
+      "expected_documents": [
+        { "document_id": "doc-data-002", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-residency",
+      "query": "keep all of our data inside the european union",
+      "expected_documents": [
+        { "document_id": "doc-data-003", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-slack",
+      "query": "post notifications into a slack channel",
+      "expected_documents": [
+        { "document_id": "doc-integrations-001", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-jira-sync",
+      "query": "two way sync with jira and how conflicts are resolved",
+      "expected_documents": [
+        { "document_id": "doc-integrations-002", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-python-sdk",
+      "query": "python client library that handles retries automatically",
+      "expected_documents": [
+        { "document_id": "doc-integrations-003", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-sla",
+      "query": "response time target for an urgent priority ticket",
+      "expected_documents": [
+        { "document_id": "doc-support-001", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-diagnostics",
+      "query": "what information should I attach when opening a ticket",
+      "expected_documents": [
+        { "document_id": "doc-support-002", "relevance": 3 }
+      ]
+    },
+    {
+      "query_id": "q-slow-search",
+      "query": "search queries have become slow as the index grew",
+      "expected_documents": [
+        { "document_id": "doc-support-003", "relevance": 3 }
+      ]
+    }
+  ]
+}

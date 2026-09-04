@@ -1,0 +1,198 @@
+{
+  "corpus": "acme-cloud-docs",
+  "description": "Synthetic product documentation for a fictional SaaS platform (Acme Cloud). Used to make the whole tool explorable with zero external setup.",
+  "documents": [
+    {
+      "id": "doc-billing-001",
+      "title": "Understanding your monthly invoice",
+      "category": "billing",
+      "content": "Your monthly invoice is generated on the first day of each billing cycle and lists every subscription line item, metered usage charge, and applicable tax. Invoices are issued in the currency selected when the workspace was created and cannot be changed retroactively. Download a PDF copy of any invoice from Settings, Billing, Invoice history. Invoices remain available for seven years."
+    },
+    {
+      "id": "doc-billing-002",
+      "title": "Changing your payment method",
+      "category": "billing",
+      "content": "To change the credit card on file, open Settings, Billing, Payment methods and add a new card before removing the old one. A one dollar authorization hold is placed on the new card to verify it and is released within three business days. Workspaces on annual invoicing can pay by bank transfer instead of card by contacting the accounts team."
+    },
+    {
+      "id": "doc-billing-003",
+      "title": "Refund and proration policy",
+      "category": "billing",
+      "content": "Upgrades take effect immediately and are prorated for the remainder of the billing period. Downgrades take effect at the end of the current period and no partial refund is issued for unused time. Refunds for duplicate charges are processed within ten business days back to the original payment method."
+    },
+    {
+      "id": "doc-billing-004",
+      "title": "Metered usage and overage charges",
+      "category": "billing",
+      "content": "Plans include a monthly allowance of API calls and stored documents. Usage beyond the allowance is billed as overage at the per unit rate shown on the pricing page. Overage is calculated hourly and summarized daily so the usage dashboard reflects charges within one hour of consumption. Set a spend cap to have requests rejected instead of accruing overage."
+    },
+    {
+      "id": "doc-auth-001",
+      "title": "Resetting a forgotten password",
+      "category": "authentication",
+      "content": "Select Forgot password on the sign in screen and enter the email address associated with your account. A single use reset link valid for thirty minutes is emailed to you. If the link expires, request a new one; expired links cannot be reused. Password resets are disabled for workspaces that enforce single sign on."
+    },
+    {
+      "id": "doc-auth-002",
+      "title": "Enabling two factor authentication",
+      "category": "authentication",
+      "content": "Two factor authentication is configured per user under Profile, Security. Scan the QR code with any TOTP authenticator application and confirm the six digit code. Ten single use recovery codes are shown once at setup and must be stored securely because they are the only way back into an account whose authenticator is lost."
+    },
+    {
+      "id": "doc-auth-003",
+      "title": "Configuring SAML single sign on",
+      "category": "authentication",
+      "content": "Enterprise workspaces can federate identity with any SAML 2.0 provider including Okta, Entra ID and Google Workspace. Upload the identity provider metadata XML, map the email and displayName attributes, then run the built in connection test before enforcing SSO. Enforcing SSO immediately invalidates all existing password sessions."
+    },
+    {
+      "id": "doc-auth-004",
+      "title": "Managing API keys and secrets",
+      "category": "authentication",
+      "content": "API keys are created per workspace and scoped to a role. The secret value is displayed only once at creation time and is stored as a salted hash afterwards, so a lost key must be rotated rather than recovered. Rotating a key keeps the old secret valid for a twenty four hour grace window to allow a staged rollout."
+    },
+    {
+      "id": "doc-auth-005",
+      "title": "Session lifetime and idle timeout",
+      "category": "authentication",
+      "content": "Browser sessions last fourteen days by default and are refreshed on activity. Administrators can shorten the maximum session lifetime or enable an idle timeout that signs a user out after a chosen period of inactivity. Revoking a session from the active devices list takes effect within sixty seconds across all regions."
+    },
+    {
+      "id": "doc-api-001",
+      "title": "Rate limits and throttling behaviour",
+      "category": "api",
+      "content": "The public API allows six hundred requests per minute per workspace using a sliding window counter. Exceeding the limit returns HTTP 429 with a Retry-After header expressed in seconds. The X-RateLimit-Remaining response header lets clients back off before they are throttled. Bulk endpoints have a separate, lower limit."
+    },
+    {
+      "id": "doc-api-002",
+      "title": "Pagination with cursors",
+      "category": "api",
+      "content": "List endpoints return at most one hundred records per page. Responses include a next_cursor value which should be passed unchanged as the cursor query parameter to fetch the following page. Cursors encode a snapshot position, so results stay stable while paging even if records are inserted concurrently. Offset based paging is not supported."
+    },
+    {
+      "id": "doc-api-003",
+      "title": "Webhook delivery and retries",
+      "category": "api",
+      "content": "Webhooks are delivered at least once with an HMAC SHA256 signature in the X-Signature header. A delivery is considered failed unless your endpoint returns a 2xx status within ten seconds. Failed deliveries are retried with exponential backoff for up to twenty four hours, after which the endpoint is disabled and an alert email is sent."
+    },
+    {
+      "id": "doc-api-004",
+      "title": "Error codes and response envelopes",
+      "category": "api",
+      "content": "Every error response carries a stable machine readable code, a human readable message and a request_id. Validation failures return 422 with a field level detail array. Never branch on the message text because wording may change; branch on the code. Include the request_id when contacting support so the trace can be located."
+    },
+    {
+      "id": "doc-api-005",
+      "title": "API versioning and deprecation",
+      "category": "api",
+      "content": "The API is versioned by date and pinned per workspace. New versions are additive where possible. Breaking changes are announced at least ninety days in advance, marked with a Deprecation header on affected responses, and old versions remain available for twelve months after the announcement."
+    },
+    {
+      "id": "doc-deploy-001",
+      "title": "Self hosting with Docker Compose",
+      "category": "deployment",
+      "content": "The self hosted distribution ships as a Docker Compose bundle containing the application server, a Postgres database and an object storage service. Copy the example environment file, set a strong secret key, then run docker compose up. The stack binds to port 8080 by default and performs schema migrations automatically on first boot."
+    },
+    {
+      "id": "doc-deploy-002",
+      "title": "Environment variables reference",
+      "category": "deployment",
+      "content": "Configuration is supplied entirely through environment variables so images stay immutable across environments. Required variables are the database URL, the secret key and the public base URL. Optional variables control log verbosity, worker concurrency and the storage backend. Unknown variables are ignored rather than rejected."
+    },
+    {
+      "id": "doc-deploy-003",
+      "title": "Zero downtime upgrades",
+      "category": "deployment",
+      "content": "Upgrades follow an expand and contract pattern: migrations are backward compatible for one release, so old and new application containers can run side by side. Drain traffic from a node, replace the image, wait for the readiness probe, then move to the next node. Never skip more than two minor versions in a single hop."
+    },
+    {
+      "id": "doc-deploy-004",
+      "title": "Health checks and readiness probes",
+      "category": "deployment",
+      "content": "The service exposes a liveness endpoint that returns immediately and a readiness endpoint that verifies database and cache connectivity. Load balancers should route on readiness. A readiness failure lasting more than five minutes triggers the restart policy in the supplied Kubernetes manifests."
+    },
+    {
+      "id": "doc-deploy-005",
+      "title": "Backing up and restoring data",
+      "category": "deployment",
+      "content": "Take a logical database dump plus a copy of the object storage bucket; both are required for a consistent restore. Backups should be taken while the application is running because the dump is transactionally consistent. Test restores quarterly into an isolated environment and verify row counts against the source."
+    },
+    {
+      "id": "doc-security-001",
+      "title": "Data encryption at rest and in transit",
+      "category": "security",
+      "content": "All network traffic uses TLS 1.2 or higher with modern cipher suites and HSTS enabled. Data at rest is encrypted with AES-256 using keys managed by the cloud provider key management service and rotated annually. Database backups and object storage inherit the same encryption."
+    },
+    {
+      "id": "doc-security-002",
+      "title": "Role based access control",
+      "category": "security",
+      "content": "Four built in roles are available: owner, admin, member and viewer. Permissions are additive and evaluated per workspace resource. Custom roles on enterprise plans can restrict individual capabilities such as exporting data or managing billing. Role changes are recorded in the audit log and take effect on the next request."
+    },
+    {
+      "id": "doc-security-003",
+      "title": "Audit logs and export",
+      "category": "security",
+      "content": "Audit logs capture actor, action, target resource, source IP address and timestamp for every administrative event. Logs are retained for one year on business plans and three years on enterprise plans. Export the log as newline delimited JSON, or stream it to an external SIEM using the log drain integration."
+    },
+    {
+      "id": "doc-security-004",
+      "title": "Reporting a security vulnerability",
+      "category": "security",
+      "content": "Report suspected vulnerabilities through the coordinated disclosure address published in the security policy file. Reports are acknowledged within one business day and triaged within five. Do not perform denial of service testing or test against other customers' workspaces; use a dedicated trial workspace instead."
+    },
+    {
+      "id": "doc-data-001",
+      "title": "Data retention and deletion",
+      "category": "data",
+      "content": "Deleted records enter a thirty day soft delete window during which they can be restored by an administrator. After the window they are purged from primary storage and removed from backups within a further thirty five days. Deleting a workspace schedules an irreversible purge of all associated data."
+    },
+    {
+      "id": "doc-data-002",
+      "title": "Exporting your workspace data",
+      "category": "data",
+      "content": "A full export bundles records as JSON along with uploaded files in their original format. Exports are prepared asynchronously and a signed download link valid for seven days is emailed when ready. Large workspaces are split into multiple archives of at most five gigabytes each."
+    },
+    {
+      "id": "doc-data-003",
+      "title": "Data residency and regions",
+      "category": "data",
+      "content": "Workspaces can be pinned to the European Union, United States or Australian region at creation time. All primary data, backups and search indexes stay within the selected region. Region cannot be changed after creation; migrating requires an export and a fresh import into a new workspace."
+    },
+    {
+      "id": "doc-integrations-001",
+      "title": "Connecting a Slack workspace",
+      "category": "integrations",
+      "content": "Install the Acme app from the Slack marketplace and approve the requested scopes. Choose a default channel for notifications, then map individual event types to channels as needed. Disconnecting removes the bot token immediately but does not delete messages already posted."
+    },
+    {
+      "id": "doc-integrations-002",
+      "title": "Syncing with your ticketing system",
+      "category": "integrations",
+      "content": "Two way sync is supported with Jira and Linear. Field mappings are configured per project and conflicts are resolved with last write wins based on the source system timestamp. The initial sync backfills up to twelve months of history and can take several hours for large projects."
+    },
+    {
+      "id": "doc-integrations-003",
+      "title": "Using the Python SDK",
+      "category": "integrations",
+      "content": "Install the SDK with pip and instantiate the client with your API key and workspace identifier. The client handles retries, rate limit backoff and cursor pagination automatically through the iterate helper. All methods are also available in an asynchronous flavour when an event loop is present."
+    },
+    {
+      "id": "doc-support-001",
+      "title": "Support hours and response targets",
+      "category": "support",
+      "content": "Standard support answers within one business day during regional business hours. Priority support answers urgent tickets within four hours around the clock. Severity one incidents affecting availability are handled continuously until resolved and receive an update at least every sixty minutes."
+    },
+    {
+      "id": "doc-support-002",
+      "title": "How to gather diagnostic information",
+      "category": "support",
+      "content": "Before opening a ticket, collect the request_id from the failing response, the workspace identifier, the exact timestamp with timezone, and any relevant screenshots. For self hosted installations attach the container logs from the last thirty minutes and the output of the built in diagnostics command."
+    },
+    {
+      "id": "doc-support-003",
+      "title": "Troubleshooting slow search results",
+      "category": "support",
+      "content": "Search latency usually rises because the index has grown faster than the allocated memory. Check the index size and cache hit ratio on the performance dashboard. Reducing the number of returned fields and adding a filter on the workspace identifier are the two changes with the largest effect on query time."
+    }
+  ]
+}
