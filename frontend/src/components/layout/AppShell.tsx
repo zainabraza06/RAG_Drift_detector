@@ -216,7 +216,7 @@ function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
-          <RunEvaluationButton size="sm" />
+          <RunEvaluationButton size="sm" compactOnMobile />
         </div>
       </div>
     </header>

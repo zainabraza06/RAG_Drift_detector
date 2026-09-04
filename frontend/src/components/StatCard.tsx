@@ -12,6 +12,8 @@ interface StatCardProps {
   hint?: string;
   /** Marks the metric the drift verdict was decided on. */
   primary?: boolean;
+  /** What the delta is measured against, e.g. "baseline" or "previous run". */
+  comparedTo?: string;
   footer?: ReactNode;
 }
 
@@ -28,6 +30,7 @@ export function StatCard({
   delta,
   hint,
   primary,
+  comparedTo = "previous",
   footer,
 }: StatCardProps) {
   const hasDelta = delta !== null && delta !== undefined;
@@ -85,10 +88,12 @@ export function StatCard({
         >
           <DeltaIcon className="h-3.5 w-3.5" aria-hidden />
           {formatDelta(delta)}
-          <span className="font-normal text-content-subtle">vs previous</span>
+          <span className="font-normal text-content-subtle">vs {comparedTo}</span>
         </p>
       ) : (
-        <p className="mt-2 text-xs text-content-subtle">No comparable prior run</p>
+        <p className="mt-2 text-xs text-content-subtle">
+          No comparable prior run
+        </p>
       )}
 
       {footer ? <div className="mt-3">{footer}</div> : null}

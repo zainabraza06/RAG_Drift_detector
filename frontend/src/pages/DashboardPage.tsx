@@ -60,23 +60,33 @@ export function DashboardPage() {
           Latest metrics at k={data.latest_run?.primary_k}
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {METRIC_NAMES.map((metric) => (
-            <StatCard
-              key={metric}
-              label={
-                METRIC_LABELS[metric] +
-                (metric === "mrr" ? "" : `@${data.latest_run?.primary_k}`)
-              }
-              value={data.primary_metrics?.[metric] ?? null}
-              delta={data.metric_deltas[metric] ?? null}
-              hint={METRIC_DESCRIPTIONS[metric]}
-              primary={data.latest_drift?.config.primary_metric === metric}
-            />
-          ))}
+          {METRIC_NAMES.map((metric) => {
+            // Prefer the drift assessment's own comparison. It measures
+            // against the same multi-run baseline the verdict used, so the
+            // cards cannot contradict the headline above them; the
+            // previous-run delta is the fallback before a baseline exists.
+            const comparison = data.latest_drift?.comparisons.find(
+              (item) => item.metric === metric,
+            );
+            return (
+              <StatCard
+                key={metric}
+                label={
+                  METRIC_LABELS[metric] +
+                  (metric === "mrr" ? "" : `@${data.latest_run?.primary_k}`)
+                }
+                value={data.primary_metrics?.[metric] ?? null}
+                delta={comparison?.difference ?? data.metric_deltas[metric] ?? null}
+                comparedTo={comparison ? "baseline" : "previous"}
+                hint={METRIC_DESCRIPTIONS[metric]}
+                primary={data.latest_drift?.config.primary_metric === metric}
+              />
+            );
+          })}
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid items-start gap-6 lg:grid-cols-3">
         <LatestAssessment summary={data} />
         <RunFacts summary={data} />
       </div>

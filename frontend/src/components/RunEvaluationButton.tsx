@@ -10,6 +10,12 @@ interface RunEvaluationButtonProps {
   size?: "sm" | "md" | "lg";
   variant?: "primary" | "secondary";
   className?: string;
+  /**
+   * Hides the label below the `sm` breakpoint. Used in the header, where the
+   * full label wraps to two lines on a narrow phone; the icon still carries
+   * the meaning and the accessible name is kept on the button.
+   */
+  compactOnMobile?: boolean;
 }
 
 /**
@@ -23,6 +29,7 @@ export function RunEvaluationButton({
   size = "md",
   variant = "primary",
   className,
+  compactOnMobile,
 }: RunEvaluationButtonProps) {
   const { push } = useToast();
   const mutation = useRunEvaluation();
@@ -32,6 +39,7 @@ export function RunEvaluationButton({
       variant={variant}
       size={size}
       className={className}
+      aria-label="Run evaluation"
       loading={mutation.isPending}
       icon={<Play className="h-3.5 w-3.5" aria-hidden />}
       onClick={() =>
@@ -61,7 +69,9 @@ export function RunEvaluationButton({
         })
       }
     >
-      {mutation.isPending ? "Running…" : "Run evaluation"}
+      <span className={compactOnMobile ? "hidden sm:inline" : undefined}>
+        {mutation.isPending ? "Running…" : "Run evaluation"}
+      </span>
     </Button>
   );
 }

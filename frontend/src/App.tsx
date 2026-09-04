@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense, lazy } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppShell } from "@/components/layout/AppShell";
 import { ChartSkeleton, ListSkeleton } from "@/components/states/LoadingState";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -43,37 +44,52 @@ export function App() {
         <BrowserRouter>
           <Routes>
             <Route element={<AppShell />}>
-              <Route index element={<DashboardPage />} />
+              <Route
+                index
+                element={
+                  <ErrorBoundary>
+                    <DashboardPage />
+                  </ErrorBoundary>
+                }
+              />
               <Route
                 path="trends"
                 element={
-                  <Suspense fallback={<RouteFallback variant="charts" />}>
-                    <TrendsPage />
-                  </Suspense>
+                  <ErrorBoundary>
+                    <Suspense fallback={<RouteFallback variant="charts" />}>
+                      <TrendsPage />
+                    </Suspense>
+                  </ErrorBoundary>
                 }
               />
               <Route
                 path="drift"
                 element={
-                  <Suspense fallback={<RouteFallback />}>
-                    <DriftEventsPage />
-                  </Suspense>
+                  <ErrorBoundary>
+                    <Suspense fallback={<RouteFallback />}>
+                      <DriftEventsPage />
+                    </Suspense>
+                  </ErrorBoundary>
                 }
               />
               <Route
                 path="golden-set"
                 element={
-                  <Suspense fallback={<RouteFallback />}>
-                    <GoldenSetPage />
-                  </Suspense>
+                  <ErrorBoundary>
+                    <Suspense fallback={<RouteFallback />}>
+                      <GoldenSetPage />
+                    </Suspense>
+                  </ErrorBoundary>
                 }
               />
               <Route
                 path="*"
                 element={
-                  <Suspense fallback={<RouteFallback />}>
-                    <NotFoundPage />
-                  </Suspense>
+                  <ErrorBoundary>
+                    <Suspense fallback={<RouteFallback />}>
+                      <NotFoundPage />
+                    </Suspense>
+                  </ErrorBoundary>
                 }
               />
             </Route>

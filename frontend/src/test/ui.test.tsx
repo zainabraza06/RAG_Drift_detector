@@ -9,9 +9,10 @@
  */
 
 import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { DiagnosticsPanel } from "@/components/DiagnosticsPanel";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { DriftAssessmentCard } from "@/components/DriftAssessmentCard";
 import { HealthBadge } from "@/components/HealthBadge";
 import { StatCard } from "@/components/StatCard";
@@ -162,7 +163,10 @@ describe("health status", () => {
   it.each([
     ["healthy", "Healthy"],
     ["warning", "Caution"],
-    ["critical", "Regression"],
+    // "Action needed" rather than "Regression": the health chip describes a
+    // state, the verdict badge beside it describes what was measured, and
+    // both saying "Regression" read as a duplicate.
+    ["critical", "Action needed"],
   ] as const)("renders %s as %s", (status, label) => {
     renderWithProviders(<HealthBadge status={status} />);
     expect(screen.getByText(label)).toBeInTheDocument();
@@ -272,5 +276,51 @@ describe("formatting", () => {
   it("reports a p-value below the Monte Carlo floor as a bound", () => {
     expect(formatPValue(0.00001)).toBe("p < 0.0001");
     expect(formatPValue(0.0436)).toBe("p = 0.0436");
+  });
+});
+
+
+// ----------------------------------------------------------------------
+// Error boundary
+// ----------------------------------------------------------------------
+describe("error boundary", () => {
+  function Explode({ message }: { message: string }): never {
+    throw new Error(message);
+  }
+
+  it("contains a crash instead of unmounting the whole tree", () => {
+    // React logs the caught error; silencing keeps the test output readable.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    renderWithProviders(
+      <div>
+        <p>sidebar survives</p>
+        <ErrorBoundary>
+          <Explode message="kaboom" />
+        </ErrorBoundary>
+      </div>,
+    );
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    // The point of the boundary: everything outside it still renders.
+    expect(screen.getByText("sidebar survives")).toBeInTheDocument();
+    spy.mockRestore();
+  });
+
+  it("recognises a stale lazy chunk and offers a reload", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    renderWithProviders(
+      <ErrorBoundary>
+        <Explode message="Failed to fetch dynamically imported module: /assets/x.js" />
+      </ErrorBoundary>,
+    );
+
+    // A deploy replaced the hashed assets under a stale index.html; reloading
+    // is the fix, and re-rendering the same failed import is not.
+    expect(screen.getByText(/needs a refresh/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /reload/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /dismiss/i })).toBeNull();
+    spy.mockRestore();
   });
 });

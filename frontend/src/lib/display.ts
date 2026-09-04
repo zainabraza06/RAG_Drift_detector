@@ -53,7 +53,7 @@ export const HEALTH_META: Record<HealthStatus, HealthMeta> = {
     chip: "bg-warning-soft text-warning ring-warning/25",
   },
   critical: {
-    label: "Regression",
+    label: "Action needed",
     hint: "The latest run fell significantly below its baseline.",
     icon: XCircle,
     dot: "bg-critical",
