@@ -7,6 +7,7 @@ milliseconds without a vector store running anywhere.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -149,7 +150,10 @@ def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Settin
         "DRIFT_DATABASE_URL", f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     )
     monkeypatch.setenv("DRIFT_CHROMA_MODE", "memory")
-    monkeypatch.setenv("DRIFT_CHROMA_COLLECTION", "test-collection")
+    # chromadb.EphemeralClient() is shared per process, so collections
+    # outlive the app that made them. A unique name per test is what keeps
+    # these isolated and order-independent.
+    monkeypatch.setenv("DRIFT_CHROMA_COLLECTION", f"test-{uuid.uuid4().hex[:12]}")
     monkeypatch.setenv("DRIFT_BOOTSTRAP_DEMO", "false")
 
     get_settings.cache_clear()
@@ -197,7 +201,7 @@ def api_client(
         "DRIFT_DATABASE_URL", f"sqlite:///{(tmp_path / 'api.db').as_posix()}"
     )
     monkeypatch.setenv("DRIFT_CHROMA_MODE", "memory")
-    monkeypatch.setenv("DRIFT_CHROMA_COLLECTION", "api-test")
+    monkeypatch.setenv("DRIFT_CHROMA_COLLECTION", f"api-{uuid.uuid4().hex[:12]}")
     monkeypatch.setenv("DRIFT_BOOTSTRAP_DEMO", "true")
 
     get_settings.cache_clear()

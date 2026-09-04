@@ -48,7 +48,7 @@ class TestBootstrapAndHealth:
         assert info["vector_store"]["reachable"] is True
         assert info["vector_store"]["document_count"] == 32
         assert info["active_golden_set"]["name"] == "acme-cloud-support"
-        assert info["schema_revision"] == "0001_initial_schema"
+        assert info["schema_revision"] == "0002_drift_events"
 
     def test_health_reports_both_dependencies(self, api_client: TestClient) -> None:
         response = api_client.get(f"{API}/health")
@@ -393,3 +393,165 @@ class TestGoldenSets:
         )
         assert response.status_code == 400
         assert response.json()["error"]["code"] == "invalid_golden_set"
+
+
+# ----------------------------------------------------------------------
+# Drift
+# ----------------------------------------------------------------------
+class TestDrift:
+    def test_the_first_run_has_no_baseline(self, api_client: TestClient) -> None:
+        created = api_client.post(f"{API}/runs", json={}).json()
+        body = api_client.get(f"{API}/runs/{created['run_id']}/drift").json()
+
+        assert body["verdict"] == "insufficient_data"
+        assert body["comparisons"] == []
+        assert "No comparable earlier run" in body["summary"]
+
+    def test_an_unchanged_system_is_stable(self, api_client: TestClient) -> None:
+        api_client.post(f"{API}/runs", json={})
+        second = api_client.post(f"{API}/runs", json={}).json()
+
+        body = api_client.get(f"{API}/runs/{second['run_id']}/drift").json()
+        assert body["verdict"] == "stable"
+        assert body["query_count"] == 30
+        assert len(body["comparisons"]) == 4
+        # Retrieval is deterministic, so an unchanged index moves nothing.
+        assert all(c["difference"] == 0.0 for c in body["comparisons"])
+
+    def test_a_degraded_index_is_detected_with_its_reasoning(
+        self, api_client: TestClient
+    ) -> None:
+        """The end-to-end claim: break retrieval, and the tool says so."""
+        for _ in range(2):
+            api_client.post(f"{API}/runs", json={})
+
+        # Remove documents the golden set expects, which is what a botched
+        # re-index looks like from the outside.
+        api_client.app.state.vector_store.delete_documents(  # type: ignore[attr-defined]
+            [
+                "doc-api-001",
+                "doc-api-002",
+                "doc-auth-003",
+                "doc-security-003",
+                "doc-data-002",
+                "doc-support-003",
+            ]
+        )
+        degraded = api_client.post(f"{API}/runs", json={}).json()
+        body = api_client.get(f"{API}/runs/{degraded['run_id']}/drift").json()
+
+        assert body["verdict"] == "degraded"
+        recall = next(c for c in body["comparisons"] if c["metric"] == "recall_at_k")
+        assert recall["difference"] < -0.1
+        assert recall["ci_upper"] < 0  # the whole interval sits below zero
+        assert recall["p_value_adjusted"] < 0.05
+        assert recall["significant"] is True
+        assert recall["material"] is True
+
+        # The verdict has to carry its reasoning, not just a boolean.
+        assert "CI" in body["summary"] and "p=" in body["summary"]
+        assert body["hit_rate"]["became_misses"] > 0
+
+    def test_assessments_are_stored_and_listed(self, api_client: TestClient) -> None:
+        api_client.post(f"{API}/runs", json={})
+        api_client.post(f"{API}/runs", json={})
+
+        page = api_client.get(f"{API}/drift/events").json()
+        assert page["total"] == 2
+        assert page["items"][0]["verdict"] == "stable"
+        assert api_client.get(f"{API}/drift/latest").json()["verdict"] == "stable"
+
+    def test_events_can_be_filtered_by_verdict(self, api_client: TestClient) -> None:
+        api_client.post(f"{API}/runs", json={})
+        api_client.post(f"{API}/runs", json={})
+
+        page = api_client.get(
+            f"{API}/drift/events", params={"verdict": "insufficient_data"}
+        ).json()
+        assert page["total"] == 1
+        assert page["items"][0]["verdict"] == "insufficient_data"
+
+    def test_latest_is_null_before_any_run(self, api_client: TestClient) -> None:
+        assert api_client.get(f"{API}/drift/latest").json() is None
+
+    def test_drift_for_a_missing_run_is_a_404(self, api_client: TestClient) -> None:
+        response = api_client.get(f"{API}/runs/nope/drift")
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "run_not_found"
+
+    def test_deleting_a_run_removes_its_assessment(
+        self, api_client: TestClient
+    ) -> None:
+        api_client.post(f"{API}/runs", json={})
+        second = api_client.post(f"{API}/runs", json={}).json()
+
+        assert api_client.get(f"{API}/drift/events").json()["total"] == 2
+        api_client.delete(f"{API}/runs/{second['run_id']}")
+        # ON DELETE CASCADE: a verdict cannot outlive the run it describes.
+        assert api_client.get(f"{API}/drift/events").json()["total"] == 1
+
+    def test_the_config_is_recorded_with_every_verdict(
+        self, api_client: TestClient
+    ) -> None:
+        api_client.post(f"{API}/runs", json={})
+        second = api_client.post(f"{API}/runs", json={}).json()
+
+        config = api_client.get(f"{API}/runs/{second['run_id']}/drift").json()["config"]
+        assert config["confidence_level"] == 0.95
+        assert config["resamples"] == 10000
+        assert config["seed"] == 20240517
+
+
+class TestDashboardHealth:
+    def test_unknown_before_any_run(self, api_client: TestClient) -> None:
+        assert api_client.get(f"{API}/dashboard").json()["health"] == "unknown"
+
+    def test_unknown_while_there_is_no_baseline(self, api_client: TestClient) -> None:
+        api_client.post(f"{API}/runs", json={})
+        body = api_client.get(f"{API}/dashboard").json()
+        # One run has nothing to compare against, and "not yet known to be
+        # healthy" must not be shown as green.
+        assert body["health"] == "unknown"
+        assert body["latest_drift"]["verdict"] == "insufficient_data"
+
+    def test_warning_when_a_stable_verdict_carries_caveats(
+        self, api_client: TestClient
+    ) -> None:
+        api_client.post(f"{API}/runs", json={})
+        api_client.post(f"{API}/runs", json={})
+        body = api_client.get(f"{API}/dashboard").json()
+
+        # The demo golden set has 30 queries, right at the edge of where the
+        # interval is trustworthy, so the verdict is stable with a caveat.
+        assert body["health"] in {"healthy", "warning"}
+        assert body["open_regressions"] == 0
+
+    def test_critical_once_a_regression_is_detected(
+        self, api_client: TestClient
+    ) -> None:
+        for _ in range(2):
+            api_client.post(f"{API}/runs", json={})
+        api_client.app.state.vector_store.delete_documents(  # type: ignore[attr-defined]
+            ["doc-api-001", "doc-api-002", "doc-auth-003", "doc-security-003"]
+        )
+        api_client.post(f"{API}/runs", json={})
+
+        body = api_client.get(f"{API}/dashboard").json()
+        assert body["health"] == "critical"
+        assert body["open_regressions"] > 0
+        assert body["latest_drift"]["verdict"] == "degraded"
+
+
+class TestIsolation:
+    def test_each_test_gets_a_freshly_seeded_index(
+        self, api_client: TestClient
+    ) -> None:
+        """Guards the fixture, not the app.
+
+        chromadb.EphemeralClient() is shared across a process, so a collection
+        created by one test outlives the application that made it. Without a
+        unique collection name per test, documents deleted by an earlier test
+        would silently leak in here and make results order-dependent.
+        """
+        info = api_client.get(f"{API}/system/info").json()
+        assert info["vector_store"]["document_count"] == 32
