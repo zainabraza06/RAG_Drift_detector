@@ -17,8 +17,10 @@ from app.connectors.base import VectorStoreConnector
 from app.core.config import Settings, get_settings
 from app.core.factory import build_scoring_config
 from app.db.session import get_session_factory
+from app.repositories.drift import DriftRepository
 from app.repositories.golden_sets import GoldenSetRepository
 from app.repositories.runs import RunRepository
+from app.services.drift_service import DriftService
 from app.services.golden_set_service import GoldenSetService
 from app.services.run_service import RunService
 from app.services.scoring.engine import ScoringEngine
@@ -80,13 +82,26 @@ def get_golden_set_service(session: SessionDep) -> GoldenSetService:
 GoldenSetServiceDep = Annotated[GoldenSetService, Depends(get_golden_set_service)]
 
 
+def get_drift_service(session: SessionDep) -> DriftService:
+    return DriftService(
+        runs=RunRepository(session), drift=DriftRepository(session)
+    )
+
+
+DriftServiceDep = Annotated[DriftService, Depends(get_drift_service)]
+
+
 def get_run_service(
     session: SessionDep,
     engine: ScoringEngineDep,
     golden_sets: GoldenSetServiceDep,
+    drift: DriftServiceDep,
 ) -> RunService:
     return RunService(
-        engine=engine, runs=RunRepository(session), golden_sets=golden_sets
+        engine=engine,
+        runs=RunRepository(session),
+        golden_sets=golden_sets,
+        drift=drift,
     )
 
 

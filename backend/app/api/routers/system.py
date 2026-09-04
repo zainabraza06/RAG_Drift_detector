@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from app import __version__
 from app.api.deps import (
+    DriftServiceDep,
     GoldenSetServiceDep,
     RunServiceDep,
     SessionDep,
@@ -20,6 +21,7 @@ from app.api.schemas import (
     HealthResponse,
     SystemInfoResponse,
     VectorStoreStatus,
+    health_status,
 )
 from app.connectors import available_connectors
 from app.db.migrations import current_revision
@@ -137,7 +139,9 @@ def system_info(
     summary="Everything the dashboard home screen needs",
 )
 def dashboard(
-    runs: RunServiceDep, golden_sets: GoldenSetServiceDep
+    runs: RunServiceDep,
+    golden_sets: GoldenSetServiceDep,
+    drift: DriftServiceDep,
 ) -> DashboardSummary:
     """One request per first paint.
 
@@ -151,6 +155,8 @@ def dashboard(
     except NoActiveGoldenSetError:
         active = None
 
+    assessment = drift.find_for_run(latest.run_id) if latest else None
+
     return DashboardSummary(
         has_runs=latest is not None,
         total_runs=runs.count(),
@@ -161,4 +167,7 @@ def dashboard(
         active_golden_set=active,
         last_run_at=latest.finished_at if latest else None,
         document_count=latest.store.document_count if latest else None,
+        health=health_status(assessment, has_runs=latest is not None),
+        latest_drift=assessment,
+        open_regressions=len(assessment.regressions) if assessment else 0,
     )

@@ -14,6 +14,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.errors import GoldenSetError
+from app.domain.drift import DriftAssessment, DriftVerdict
 from app.domain.golden_set import (
     DEFAULT_RELEVANCE,
     ExpectedDocument,
@@ -22,6 +23,8 @@ from app.domain.golden_set import (
 )
 from app.domain.history import GoldenSetRef, RunRecord, StoredGoldenSet
 from app.domain.metrics import MetricSet
+
+HealthStatus = Literal["healthy", "warning", "critical", "unknown"]
 
 # ----------------------------------------------------------------------
 # Requests
@@ -146,6 +149,31 @@ class DashboardSummary(BaseModel):
     active_golden_set: StoredGoldenSet | None = None
     last_run_at: datetime | None = None
     document_count: int | None = None
+
+    #: Traffic light for the dashboard header.
+    health: HealthStatus = "unknown"
+    latest_drift: DriftAssessment | None = None
+    open_regressions: int = Field(
+        default=0, ge=0, description="Metrics currently flagged as regressed."
+    )
+
+
+def health_status(assessment: DriftAssessment | None, *, has_runs: bool) -> HealthStatus:
+    """Map a drift verdict onto the dashboard traffic light.
+
+    "Insufficient data" is amber rather than green on purpose: a system that
+    has never been compared against anything is not known to be healthy, and
+    showing green would be a claim the data does not support.
+    """
+    if not has_runs:
+        return "unknown"
+    if assessment is None:
+        return "unknown"
+    if assessment.verdict is DriftVerdict.DEGRADED:
+        return "critical"
+    if assessment.verdict is DriftVerdict.INSUFFICIENT_DATA:
+        return "unknown"
+    return "warning" if assessment.warnings else "healthy"
 
 
 # ----------------------------------------------------------------------

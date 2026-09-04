@@ -7,8 +7,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Query, Response, status
 
-from app.api.deps import RunServiceDep
+from app.api.deps import DriftServiceDep, RunServiceDep
 from app.api.schemas import RunRequest
+from app.domain.drift import DriftAssessment
 from app.domain.history import Page, RunDetail, RunRecord
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -107,3 +108,27 @@ def get_run_detail(run_id: str, service: RunServiceDep) -> RunDetail:
 def delete_run(run_id: str, service: RunServiceDep) -> Response:
     service.delete(run_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{run_id}/drift",
+    response_model=DriftAssessment,
+    summary="Statistical drift assessment for one run",
+    responses={404: {"description": "No such run."}},
+)
+def get_run_drift(
+    run_id: str,
+    service: DriftServiceDep,
+    recompute: Annotated[
+        bool, Query(description="Re-run the test instead of returning the stored one.")
+    ] = False,
+) -> DriftAssessment:
+    """Compares this run against its comparable predecessors.
+
+    The stored assessment is returned when one exists; a run that predates
+    drift detection is assessed on first request. Pass ``recompute=true`` after
+    changing detection settings.
+    """
+    if recompute:
+        return service.assess(run_id)
+    return service.get_for_run(run_id)
