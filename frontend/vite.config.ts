@@ -19,6 +19,18 @@ export default defineConfig({
       },
     },
   },
+  // `vite preview` serves the production build; it needs the same proxy as
+  // the dev server so the built bundle can be exercised against a live API
+  // without nginx, which is how the README screenshots are captured.
+  preview: {
+    port: 4173,
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_PROXY ?? "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     outDir: "dist",
     sourcemap: true,
