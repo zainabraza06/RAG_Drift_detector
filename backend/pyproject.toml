@@ -1,0 +1,24 @@
+[project]
+name = "rag-drift-detector"
+version = "0.1.0"
+description = "Monitor retrieval quality in RAG systems and detect silent degradation."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 92
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+exclude = ['^\.venv/']
+
+[[tool.mypy.overrides]]
+module = ["chromadb.*"]
+ignore_missing_imports = true
