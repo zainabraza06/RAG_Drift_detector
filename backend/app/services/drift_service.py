@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import logging
 
-from app.core.errors import RunNotFoundError
+from app.connectors.base import VectorStoreConnector
+from app.core.errors import DiagnosticsUnavailableError, RunNotFoundError, VectorStoreError
+from app.domain.diagnostics import DiagnosticReport
 from app.domain.drift import DriftAssessment, DriftConfig, DriftVerdict
-from app.domain.history import Page
+from app.domain.history import Page, RunDetail
 from app.repositories.drift import DriftRepository
 from app.repositories.runs import RunRepository
+from app.services.diagnostics import DiagnosticContext, DiagnosticEngine, IndexProbe
 from app.services.drift.detector import DriftDetector
 
 logger = logging.getLogger(__name__)
@@ -35,11 +38,15 @@ class DriftService:
         runs: RunRepository,
         drift: DriftRepository,
         config: DriftConfig | None = None,
+        vector_store: VectorStoreConnector | None = None,
+        diagnostics: DiagnosticEngine | None = None,
     ) -> None:
         self._runs = runs
         self._drift = drift
         self._config = config or DriftConfig()
         self._detector = DriftDetector(self._config)
+        self._vector_store = vector_store
+        self._diagnostics = diagnostics or DiagnosticEngine()
 
     @property
     def config(self) -> DriftConfig:
@@ -72,9 +79,55 @@ class DriftService:
         ]
 
         assessment = self._detector.assess(current, baseline)
+
+        # Diagnostics only ever explain a verdict the statistics established;
+        # they are never run to *produce* one, and never on a healthy run.
+        if assessment.verdict is DriftVerdict.DEGRADED:
+            report = self._diagnostics.diagnose(
+                DiagnosticContext(
+                    assessment=assessment,
+                    current=current,
+                    baseline=baseline,
+                    index=self._probe_index(current),
+                )
+            )
+            assessment = assessment.model_copy(update={"diagnostics": report})
+
         if store:
             return self._drift.save(assessment)
         return assessment
+
+    def _probe_index(self, current: RunDetail) -> IndexProbe:
+        """Gather live index facts once, for every rule to share.
+
+        Failure is reported as an unreachable probe rather than raised: rules
+        that need the index then record themselves as skipped, and the rest of
+        the report still gets produced.
+        """
+        if self._vector_store is None:
+            return IndexProbe(
+                reachable=False,
+                failure_reason="no vector store was available to this process",
+            )
+
+        expected = {
+            document_id
+            for score in current.query_scores
+            for document_id in score.relevant_ids
+        }
+        try:
+            present = self._vector_store.existing_document_ids(sorted(expected))
+            count = self._vector_store.count_documents()
+        except VectorStoreError as exc:
+            logger.warning("index probe failed during diagnostics: %s", exc)
+            return IndexProbe(reachable=False, failure_reason=str(exc))
+
+        return IndexProbe(
+            document_count=count,
+            present_document_ids=present,
+            missing_document_ids=frozenset(expected) - present,
+            reachable=True,
+        )
 
     def assess_if_possible(self, run_id: str) -> DriftAssessment | None:
         """Assess a run without letting a failure break the caller.
@@ -107,6 +160,17 @@ class DriftService:
         if not compute:
             raise RunNotFoundError(f"no drift assessment stored for run '{run_id}'")
         return self.assess(run_id)
+
+    def diagnostics_for_run(self, run_id: str) -> DiagnosticReport:
+        """The heuristic report for a run, computing the assessment if needed."""
+        assessment = self.get_for_run(run_id)
+        if assessment.diagnostics is None:
+            raise DiagnosticsUnavailableError(
+                f"no diagnostics for run '{run_id}': its verdict is "
+                f"'{assessment.verdict.value}', and diagnostics are only produced "
+                "for a regression."
+            )
+        return assessment.diagnostics
 
     def list_events(
         self,

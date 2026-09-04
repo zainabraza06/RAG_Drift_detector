@@ -295,6 +295,10 @@ class DriftEventRow(TimestampMixin, Base):
     hit_rate: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     warnings: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    #: Heuristic root-cause report. Nullable because events written before
+    #: diagnostics existed have none, and because a report is optional by
+    #: design -- a verdict stands on its own without an explanation.
+    diagnostics: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     detected_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

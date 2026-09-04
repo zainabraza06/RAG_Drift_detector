@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domain.diagnostics import DiagnosticReport
 from app.domain.history import GoldenSetRef
 
 Direction = Literal["up", "down", "flat"]
@@ -178,6 +179,10 @@ class DriftAssessment(BaseModel):
     query_count: int = Field(default=0, ge=0)
     warnings: tuple[str, ...] = ()
     config: DriftConfig = DriftConfig()
+    #: Heuristic explanation of the verdict, when one was produced. A distinct
+    #: type carrying its own disclaimer, so nesting it here cannot be mistaken
+    #: for it sharing the statistical standing of the fields above.
+    diagnostics: DiagnosticReport | None = None
     detected_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property

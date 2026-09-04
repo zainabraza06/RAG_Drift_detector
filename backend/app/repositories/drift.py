@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import as_utc
 from app.db.models import DriftEventRow, EvaluationRunRow
+from app.domain.diagnostics import DiagnosticReport
 from app.domain.drift import (
     DriftAssessment,
     DriftConfig,
@@ -64,6 +65,11 @@ class DriftRepository:
         )
         row.warnings = list(assessment.warnings)
         row.config = assessment.config.model_dump(mode="json")
+        row.diagnostics = (
+            assessment.diagnostics.model_dump(mode="json")
+            if assessment.diagnostics
+            else None
+        )
         row.detected_at = assessment.detected_at
 
         self._session.flush()
@@ -182,5 +188,10 @@ class DriftRepository:
             query_count=row.query_count,
             warnings=tuple(row.warnings or ()),
             config=DriftConfig.model_validate(row.config or {}),
+            diagnostics=(
+                DiagnosticReport.model_validate(row.diagnostics)
+                if row.diagnostics
+                else None
+            ),
             detected_at=as_utc(row.detected_at),
         )

@@ -50,3 +50,7 @@ class RunNotFoundError(DriftDetectorError):
 
 class DriftDetectionError(DriftDetectorError):
     """A drift assessment could not be produced."""
+
+
+class DiagnosticsUnavailableError(DriftDetectorError):
+    """No heuristic diagnostics exist for this run."""
