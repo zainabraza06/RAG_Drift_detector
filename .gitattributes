@@ -1,0 +1,29 @@
+# Normalise line endings in the repository to LF regardless of the checkout
+# platform. Without this, files authored on Windows land in git with CRLF and
+# every cross-platform contributor sees phantom whole-file diffs.
+* text=auto eol=lf
+
+# Explicit, so a file written by a Windows tool in UTF-16 can never again be
+# silently stored as binary (which is how the README first landed).
+*.md      text eol=lf
+*.py      text eol=lf
+*.ts      text eol=lf
+*.tsx     text eol=lf
+*.json    text eol=lf
+*.csv     text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.toml    text eol=lf
+*.ini     text eol=lf
+*.html    text eol=lf
+*.css     text eol=lf
+Dockerfile      text eol=lf
+*.sh            text eol=lf
+
+# Binary assets - never diffed, never line-ending converted.
+*.png     binary
+*.jpg     binary
+*.gif     binary
+*.webp    binary
+*.ico     binary
+*.pdf     binary
