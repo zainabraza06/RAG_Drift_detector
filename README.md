@@ -26,8 +26,8 @@ Built in stages, each one working end to end before the next begins.
 | Stage | Scope | Status |
 | ----- | ------------------------------------------- | ------ |
 | 1 | Golden eval set + scoring engine | ✅ Done |
-| 2 | Historical tracking (SQLite) + REST API | ⬜ Next |
-| 3 | Statistical drift detection | ⬜ |
+| 2 | Historical tracking (SQLite) + REST API | ✅ Done |
+| 3 | Statistical drift detection | ⬜ Next |
 | 4 | Root-cause diagnostics rule engine | ⬜ |
 | 5 | React + TypeScript dashboard | ⬜ |
 | 6 | Docker packaging + full documentation | ⬜ |
@@ -57,17 +57,23 @@ Chroma. Adding Qdrant or pgvector is one new module and a registry entry — no
 change to metrics, drift detection, or the API.
 
 ```
-backend/app/
-├── domain/          value objects (golden set, retrieval, metrics) — no I/O
-├── connectors/      VectorStoreConnector ABC + registry + Chroma impl
-├── embeddings/      EmbeddingProvider ABC + registry + offline hashing impl
-├── services/
-│   ├── scoring/     metrics.py (pure functions) + engine.py (orchestration)
-│   ├── goldenset/   JSON/CSV loading and validation
-│   └── corpus.py    demo corpus ingestion
-├── core/            config, logging, errors, composition root
-└── cli.py           thin adapter over the services
+backend/
+├── app/
+│   ├── domain/          value objects (golden set, retrieval, metrics, history)
+│   ├── connectors/      VectorStoreConnector ABC + registry + Chroma impl
+│   ├── embeddings/      EmbeddingProvider ABC + registry + offline hashing impl
+│   ├── db/              SQLAlchemy models, sessions, Alembic helpers
+│   ├── repositories/    SQL lives here; returns domain objects, never ORM rows
+│   ├── services/        business logic (scoring, golden sets, runs, bootstrap)
+│   ├── api/             FastAPI app, routers, schemas, error mapping
+│   ├── core/            config, logging, errors, composition root
+│   └── cli.py           thin adapter over the services
+└── alembic/versions/    migrations — the single source of truth for the schema
 ```
+
+Layering is enforced by direction of imports: `api → services → repositories →
+db`, with `domain` depended on by everything and depending on nothing. No route
+handler touches a repository; no repository knows what HTTP is.
 
 ---
 
@@ -82,8 +88,12 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 
 python -m app.cli seed        # index the bundled demo corpus into Chroma
-python -m app.cli evaluate -v # score the bundled golden set
+python -m app.cli evaluate -v # score the golden set and record the run
+python -m app.cli serve       # start the API on http://127.0.0.1:8000
 ```
+
+The first database-touching command migrates the schema and imports the demo
+golden set automatically, so there is no separate init step.
 
 Output:
 
@@ -107,13 +117,78 @@ Other commands:
 
 ```bash
 python -m app.cli info                     # resolved config + index status
+python -m app.cli history                  # recorded runs, newest first
+python -m app.cli db status                # current vs head schema revision
+python -m app.cli import-golden-set FILE   # store a JSON/CSV set in the database
 python -m app.cli golden-set --check-index # validate a golden set against the index
-python -m app.cli evaluate --json          # machine-readable result
+python -m app.cli evaluate --no-save       # score without recording history
 ```
 
 Everything is configurable through `DRIFT_`-prefixed environment variables (see
 `backend/app/core/config.py`), e.g. `DRIFT_CHROMA_COLLECTION`,
 `DRIFT_EVAL_K_VALUES=1,5,20`, `DRIFT_EVAL_PRIMARY_K=5`.
+
+---
+
+## REST API
+
+`python -m app.cli serve` — interactive docs at `/docs`, OpenAPI at
+`/openapi.json`.
+
+| Method | Path | Purpose |
+| ------ | ------------------------------ | ---------------------------------- |
+| GET | `/api/health` | Liveness; 503 if the DB or vector store is down |
+| GET | `/api/system/info` | Resolved config, schema revision, index status |
+| GET | `/api/dashboard` | Everything the home screen needs, in one request |
+| POST | `/api/runs` | **Run an evaluation now** |
+| GET | `/api/runs` | Paginated history, newest first |
+| GET | `/api/runs/latest` | Most recent run, or `null` |
+| GET | `/api/runs/{id}` | One run's aggregate metrics |
+| GET | `/api/runs/{id}/queries` | Per-query breakdown at the primary cutoff |
+| DELETE | `/api/runs/{id}` | Delete a run |
+| GET | `/api/metrics/trends?k=5` | All four metrics over time, one request |
+| GET | `/api/metrics/series?metric=&k=` | One metric over time |
+| GET | `/api/metrics/cutoffs` | Cutoffs that actually have data |
+| GET/POST | `/api/golden-sets` | List / create |
+| PUT | `/api/golden-sets/{id}` | Replace judgements |
+| POST | `/api/golden-sets/{id}/activate` | Choose the set runs use by default |
+| POST | `/api/golden-sets/import` | Import a JSON/CSV file |
+
+Every error shares one envelope:
+
+```json
+{ "error": { "code": "run_not_found", "message": "run 'abc' not found" } }
+```
+
+Clients branch on `code`; `message` wording is free to change.
+
+---
+
+## Storing history
+
+Runs go into SQLite through SQLAlchemy, with **Alembic** as the only source of
+truth for the schema — there is no `create_all` shortcut, and the test suite
+runs the real migrations for every test, so a schema nobody has proved
+deployable can never pass CI.
+
+Two schema decisions carry most of the weight:
+
+**Golden sets are relational, not JSON blobs.** Queries and expected documents
+are real rows, so the dashboard's editor can change one pair without rewriting
+the set, and diagnostics can join judgements against results in SQL.
+
+**Runs denormalise the golden set they were scored against.** Alongside the
+foreign key, each run stores the golden set's name, version and *fingerprint*
+as plain columns. Deleting or editing a golden set therefore cannot rewrite
+history — a metric is only meaningful next to the ruler that produced it, and
+that ruler must not be able to change retroactively. Editing judgements
+recomputes the fingerprint, which automatically excludes runs either side of
+the edit from each other's drift comparison.
+
+Two SQLite pragmas are set explicitly on every connection: `foreign_keys=ON`
+(without it, every declared `ON DELETE CASCADE` is silently inert) and
+`journal_mode=WAL` (so a dashboard poll does not block on an in-progress
+evaluation).
 
 ---
 
@@ -206,7 +281,7 @@ recorded `model_id` makes the swap visible.
 
 ```bash
 cd backend
-python -m pytest              # 96 tests
+python -m pytest              # 163 tests
 python -m ruff check app tests
 python -m mypy app            # strict mode, clean
 ```
