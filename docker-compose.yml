@@ -1,0 +1,59 @@
+# RAG Drift Detector — full stack.
+#
+#   docker compose up --build
+#   open http://localhost:8080
+#
+# On a fresh volume the backend migrates the schema, indexes the bundled demo
+# corpus into Chroma and imports the demo golden set, so the dashboard has
+# something to show the moment it loads. Every one of those steps is
+# idempotent, so restarts are safe.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: drift-detector-backend:local
+    restart: unless-stopped
+    environment:
+      # Both SQLite and the Chroma index live under this one directory, so a
+      # single named volume is all the persistence this stack needs.
+      DRIFT_DATA_DIR: /app/data
+      DRIFT_ENVIRONMENT: production
+      DRIFT_LOG_LEVEL: ${DRIFT_LOG_LEVEL:-INFO}
+      DRIFT_CHROMA_COLLECTION: ${DRIFT_CHROMA_COLLECTION:-drift_demo}
+      DRIFT_EVAL_K_VALUES: ${DRIFT_EVAL_K_VALUES:-1,3,5,10}
+      DRIFT_EVAL_PRIMARY_K: ${DRIFT_EVAL_PRIMARY_K:-5}
+      # Set false to start with an empty index and no golden set, which is
+      # what a real deployment against its own corpus wants.
+      DRIFT_BOOTSTRAP_DEMO: ${DRIFT_BOOTSTRAP_DEMO:-true}
+    volumes:
+      - drift-data:/app/data
+    # Not published by default: nginx is the only thing that needs to reach
+    # the API, and exposing it would give the UI two different origins.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: drift-detector-frontend:local
+    restart: unless-stopped
+    ports:
+      - "${DRIFT_PORT:-8080}:80"
+    depends_on:
+      backend:
+        # Waiting for healthy rather than started means the first page load
+        # never races the migrations and the demo bootstrap.
+        condition: service_healthy
+
+volumes:
+  drift-data:
+    driver: local
