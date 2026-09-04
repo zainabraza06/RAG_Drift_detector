@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme tokens.
+ *
+ * Light and dark are two sets of the same names, so no component ever branches
+ * on the theme. The dark values are not the light ones inverted: surfaces stay
+ * slightly blue, borders carry the elevation that shadows cannot, and the
+ * semantic hues are lifted in lightness so they hold contrast on a dark
+ * canvas.
+ */
+@layer base {
+  :root {
+    --canvas: 210 40% 98%;
+    --surface: 0 0% 100%;
+    --surface-muted: 210 40% 96.5%;
+    --surface-raised: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --border-strong: 214 25% 84%;
+
+    --text: 222 47% 11%;
+    --text-muted: 215 16% 42%;
+    --text-subtle: 215 14% 58%;
+
+    --brand: 243 75% 58%;
+    --brand-soft: 243 100% 96%;
+    --brand-fg: 0 0% 100%;
+
+    --healthy: 160 84% 32%;
+    --healthy-soft: 152 76% 94%;
+    --warning: 32 94% 42%;
+    --warning-soft: 45 96% 92%;
+    --critical: 349 84% 50%;
+    --critical-soft: 350 100% 96%;
+    --unknown: 215 16% 47%;
+    --unknown-soft: 214 32% 94%;
+
+    --shadow: 222 47% 20%;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    --canvas: 222 47% 7%;
+    --surface: 222 40% 10.5%;
+    --surface-muted: 222 33% 14%;
+    --surface-raised: 222 36% 13%;
+
+    --border: 217 25% 20%;
+    --border-strong: 217 22% 28%;
+
+    --text: 210 40% 96%;
+    --text-muted: 215 20% 68%;
+    --text-subtle: 215 16% 52%;
+
+    --brand: 239 84% 71%;
+    --brand-soft: 243 47% 20%;
+    --brand-fg: 222 47% 9%;
+
+    --healthy: 158 64% 52%;
+    --healthy-soft: 160 60% 15%;
+    --warning: 41 96% 60%;
+    --warning-soft: 35 60% 16%;
+    --critical: 350 89% 66%;
+    --critical-soft: 350 55% 18%;
+    --unknown: 215 20% 62%;
+    --unknown-soft: 217 25% 20%;
+
+    --shadow: 222 60% 2%;
+
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-line;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-content antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Tabular figures everywhere numbers are compared down a column. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-canvas;
+  }
+
+  /* Respect a user's reduced-motion preference rather than animating anyway. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border-strong)) transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-line-strong;
+  }
+  .scrollbar-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
