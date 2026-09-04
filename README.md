@@ -30,7 +30,45 @@ Built in stages, each one working end to end before the next begins.
 | 3 | Statistical drift detection | ✅ Done |
 | 4 | Root-cause diagnostics rule engine | ✅ Done |
 | 5 | React + TypeScript dashboard | ✅ Done |
-| 6 | Docker packaging + full documentation | ⬜ Next |
+| 6 | Docker packaging + full documentation | ✅ Done |
+
+---
+
+## What it looks like
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Dashboard showing a detected regression, health status and headline metrics" width="100%">
+</p>
+
+The dashboard answers one question first — *is retrieval still working?* — and
+backs the answer with the interval and p-value that produced it.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/trends.png" alt="Metric trends with regressions marked on the line"></td>
+<td width="50%"><img src="docs/screenshots/dashboard-dark.png" alt="Dashboard in dark mode"></td>
+</tr>
+<tr>
+<td><b>Trends.</b> Four metrics over time. Detected regressions are marked in
+place, and each marker links to the assessment that produced it.</td>
+<td><b>Dark mode.</b> A separate palette, not an inversion — surfaces keep a
+blue cast and borders carry the elevation shadows cannot show.</td>
+</tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/drift-events.png" alt="A drift event expanded, showing the statistical comparison table and, separately, the heuristic root-cause diagnostics" width="100%">
+</p>
+
+A drift event, expanded. The **statistical assessment** — every metric with its
+confidence interval, its adjusted p-value and the method footnote — and then,
+visually separate and explicitly labelled, the **heuristic diagnostics**.
+Keeping those two apart is the point; see
+[the framing boundary](#root-cause-diagnostics--and-why-they-are-framed-differently).
+
+The screenshots are generated from a live instance by
+`frontend/scripts/screenshots.mjs`, so they cannot quietly drift out of date.
+
 
 ---
 
@@ -79,7 +117,37 @@ handler touches a repository; no repository knows what HTTP is.
 
 ## Quickstart
 
-Requires Python 3.11+.
+### With Docker (recommended)
+
+```bash
+git clone https://github.com/zainabraza06/RAG_Drift_detector.git
+cd RAG_Drift_detector
+docker compose up --build
+```
+
+Then open **http://localhost:8080**.
+
+On a fresh volume the backend migrates its schema, indexes the bundled demo
+corpus into Chroma and imports the demo golden set, so the dashboard has
+something to show the moment it loads. Every step is idempotent, so restarts
+are safe. Click **Run evaluation** twice — the second run is the first one that
+has a baseline to compare against.
+
+nginx serves the built UI and proxies `/api` to the backend on the same origin,
+so CORS is not part of the production path at all. Copy `.env.example` to
+`.env` to change the port, the cutoffs, or to start empty against your own
+corpus with `DRIFT_BOOTSTRAP_DEMO=false`.
+
+To populate a history worth looking at — ten runs across twelve days, with a
+deliberate regression part way through:
+
+```bash
+docker compose exec backend python -m scripts.seed_demo_history --reset
+```
+
+### From source
+
+Requires Python 3.11+ and Node 20+.
 
 ```bash
 cd backend
@@ -547,6 +615,39 @@ only when the expected documents are *verifiably still in the index*.
 
 ---
 
+## How it is packaged
+
+```
+┌─ frontend (nginx :80) ──────────────┐
+│  /            → built React SPA     │
+│  /api/*       → proxy to backend    │   one origin, so no CORS in production
+│  /docs        → proxy to backend    │
+└──────────────┬──────────────────────┘
+               │ docker network
+┌──────────────▼──────────────────────┐
+│  backend (uvicorn :8000)            │
+│  FastAPI · Chroma · SQLite          │
+│  /app/data ──► named volume         │   SQLite file and Chroma index together
+└─────────────────────────────────────┘
+```
+
+Both images are multi-stage and copy dependency manifests before source, so a
+code change does not invalidate the slow install layer. The backend runs as an
+unprivileged user with the data directory as its only writable path.
+
+The backend's healthcheck calls its own `/api/health`, which returns 503 when
+the database or the vector store is unreachable — so it reports genuine
+readiness rather than merely that a process is listening. The frontend waits
+for `service_healthy`, not `service_started`, so the first page load never
+races the migrations and the demo bootstrap.
+
+Both SQLite and the Chroma index live under one directory, so a single named
+volume is the whole persistence story. `docker compose down -v` resets
+everything.
+
+
+---
+
 ## Storing history
 
 Runs go into SQLite through SQLAlchemy, with **Alembic** as the only source of
@@ -663,16 +764,31 @@ recorded `model_id` makes the swap visible.
 ## Development
 
 ```bash
+# Backend — 272 tests, mypy --strict clean across 62 modules
 cd backend
-python -m pytest              # 272 tests
-python -m ruff check app tests
-python -m mypy app            # strict mode, clean
+python -m pytest
+python -m ruff check app tests alembic
+python -m mypy app
+
+# Frontend — 29 tests, TypeScript strict, ESLint clean
+cd ../frontend
+npm test
+npm run typecheck
+npm run lint
 ```
 
-Test coverage concentrates where it matters for correctness: the metric
-primitives are pinned to hand-computed values, and the scoring engine is
-exercised through a fake connector, so the whole suite runs in seconds without a
-vector store.
+Test coverage concentrates where it matters. The metric primitives are pinned
+to hand-computed values; the bootstrap's interval coverage is verified by
+simulation; the scoring engine runs against a fake connector so the suite needs
+no vector store; repository tests run the real Alembic migrations rather than
+`create_all`; and the API tests drive a fully bootstrapped application with
+nothing mocked.
+
+Two design commitments are protected by tests rather than by convention: that
+each published metric is exactly the macro-mean of the per-query values the
+bootstrap resamples, and that the diagnostics layer never acquires a numeric
+confidence — on the backend as a field-name check, on the frontend as an
+assertion that no progress bar or "% confident" string ever reaches the DOM.
 
 ---
 
