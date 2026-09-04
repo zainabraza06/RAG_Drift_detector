@@ -247,3 +247,60 @@ class QueryScoreRow(Base):
     latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     run: Mapped[EvaluationRunRow] = relationship(back_populates="query_scores")
+
+
+# ----------------------------------------------------------------------
+# Drift events
+# ----------------------------------------------------------------------
+
+
+class DriftEventRow(TimestampMixin, Base):
+    """A stored drift assessment for one run.
+
+    The per-metric comparisons are held as JSON rather than as child rows.
+    They are written once and always read as a whole -- nothing filters or
+    aggregates on an individual confidence bound -- so normalising them would
+    buy query flexibility nobody needs at the cost of a join on every read.
+    The columns that *are* filtered on (verdict, fingerprint, timestamp) are
+    real, indexed columns.
+    """
+
+    __tablename__ = "drift_events"
+    __table_args__ = (
+        # One current assessment per run; re-assessing replaces it.
+        UniqueConstraint("run_id", name="uq_drift_events_run"),
+        Index("ix_drift_events_verdict_detected", "verdict", "detected_at"),
+        Index("ix_drift_events_detected_at", "detected_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_uuid: Mapped[str] = mapped_column(
+        String(36), nullable=False, unique=True, index=True
+    )
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("evaluation_runs.id", ondelete="CASCADE"), nullable=False
+    )
+
+    verdict: Mapped[str] = mapped_column(String(20), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    query_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    golden_set_fingerprint: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    baseline_run_ids: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    comparisons: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    hit_rate: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    warnings: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    run: Mapped[EvaluationRunRow] = relationship()
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"<DriftEventRow {self.event_uuid} {self.verdict}>"
