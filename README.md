@@ -27,8 +27,8 @@ Built in stages, each one working end to end before the next begins.
 | ----- | ------------------------------------------- | ------ |
 | 1 | Golden eval set + scoring engine | ✅ Done |
 | 2 | Historical tracking (SQLite) + REST API | ✅ Done |
-| 3 | Statistical drift detection | ⬜ Next |
-| 4 | Root-cause diagnostics rule engine | ⬜ |
+| 3 | Statistical drift detection | ✅ Done |
+| 4 | Root-cause diagnostics rule engine | ⬜ Next |
 | 5 | React + TypeScript dashboard | ⬜ |
 | 6 | Docker packaging + full documentation | ⬜ |
 
@@ -149,6 +149,9 @@ Everything is configurable through `DRIFT_`-prefixed environment variables (see
 | GET | `/api/metrics/trends?k=5` | All four metrics over time, one request |
 | GET | `/api/metrics/series?metric=&k=` | One metric over time |
 | GET | `/api/metrics/cutoffs` | Cutoffs that actually have data |
+| GET | `/api/runs/{id}/drift` | Statistical drift assessment for a run |
+| GET | `/api/drift/events` | Past assessments, filterable by verdict |
+| GET | `/api/drift/latest` | Most recent assessment |
 | GET/POST | `/api/golden-sets` | List / create |
 | PUT | `/api/golden-sets/{id}` | Replace judgements |
 | POST | `/api/golden-sets/{id}/activate` | Choose the set runs use by default |
@@ -161,6 +164,200 @@ Every error shares one envelope:
 ```
 
 Clients branch on `code`; `message` wording is free to change.
+
+---
+
+## How drift detection works
+
+This is the part of the project worth reading closely. "Retrieval got worse"
+is easy to assert and hard to justify: metrics move between runs for reasons
+that have nothing to do with the system, and a threshold like *"alert if
+recall drops 5%"* fires on noise and misses real regressions in equal measure.
+
+### The comparison is paired, because the runs are not independent
+
+Two runs are only ever compared when they were scored against the **same
+golden set fingerprint**. That means query *i* appears in both runs, and the
+runs are not independent samples — an intrinsically hard query drags both down
+together.
+
+So the statistic is the **mean paired difference**. For per-query scores `b`
+(baseline) and `c` (current), over `n` queries:
+
+```
+d_i  = c_i − b_i                        per-query paired difference
+θ̂    = mean(d)                          the observed change
+θ*_r = mean(d[I_r]),   I_r ~ Uniform{1..n} with replacement, |I_r| = n
+```
+
+Each bootstrap resample draws **query indices**, and for each drawn index takes
+*both* runs' scores. Between-query difficulty cancels inside every difference.
+Resampling the two runs independently would carry that difficulty variance —
+usually far larger than the effect being measured — into the estimate twice.
+
+The difference is not subtle. On 40 queries with difficulty spread across
+[0, 1] and a true shift of −0.05 applied to every query:
+
+| | 95% interval | width |
+| -------- | ------------------ | ----- |
+| paired | [−0.0500, −0.0500] | 0.000 |
+| unpaired | [−0.1112, +0.0513] | 0.163 |
+
+The unpaired interval contains zero and detects nothing. There is a test that
+pins this (`test_pairing_cancels_between_query_difficulty`).
+
+### The interval and the p-value come from different resamples
+
+Conflating these is the most common way to get bootstrap inference quietly
+wrong.
+
+* The **interval** is read off the uncentred resamples `θ*`, whose
+  distribution is centred near `θ̂`. It answers *how precisely do we know the
+  change?*
+* The **p-value** needs a distribution generated under `H₀: E[d] = 0`. The
+  uncentred distribution is not that, so the differences are re-centred
+  (`d_i − θ̂`) before resampling and `θ̂` is compared against the result. The
+  estimate uses the `(1 + #extreme) / (R + 1)` form, which is standard, is
+  unbiased, and cannot report the impossible `p = 0` — with R = 10,000 the
+  floor is 1/10,001.
+
+Intervals are **BCa** (bias-corrected and accelerated) by default rather than
+plain percentile, because metrics are bounded in [0, 1] and pile up against
+those bounds, which skews the bootstrap distribution. When the correction is
+undefined — every query moved by exactly the same amount, so the distribution
+is a point mass — it falls back to the percentile interval rather than
+inventing one.
+
+### What the interval actually means
+
+> If this whole procedure were repeated many times on fresh samples of
+> queries, about 95% of the intervals it produced would contain the true mean
+> paired difference.
+
+It is **not** "a 95% probability the true change is in this interval" — the
+true change is fixed, the interval is what varies.
+
+And the resampling is over **queries**, so the interval quantifies uncertainty
+about *which queries happen to be in the golden set*. It treats the retrieval
+system as fixed. It does not cover a non-deterministic index, embedding
+non-determinism, or the golden set being unrepresentative of real user
+traffic. The inference is about the population of queries the golden set can
+be regarded as a sample from, and no wider.
+
+### Coverage is verified, not assumed
+
+A "95% interval" is a claim that has to be earned. Measured coverage of the
+true effect under the null, over 1,500 simulated trials per cell:
+
+| queries | BCa | percentile |
+| ------- | ----- | ---------- |
+| 10 | 0.883 | 0.889 |
+| 20 | 0.915 | 0.921 |
+| 30 | 0.941 | 0.939 |
+| 60 | 0.935 | 0.935 |
+| 120 | 0.953 | 0.952 |
+| 400 | 0.950 | 0.949 |
+
+Coverage reaches nominal from roughly 30 queries and is **anti-conservative
+below that** — at 10 queries a "95%" interval really covers about 88%. This is
+the expected finite-sample behaviour of the bootstrap, and it is why the
+detector refuses to return a verdict below `min_queries` (default 15) and
+attaches an explicit warning below 30 rather than quietly reporting an
+interval it cannot back up.
+
+### One pre-specified primary metric
+
+The verdict is decided on a **single metric chosen in advance** (NDCG@k by
+default, because it responds both to losing a document and to merely ranking
+it lower). The other three are reported as supporting context.
+
+This is the correct response to multiplicity, not an evasion of it. The four
+metrics are deterministic functions of the *same* ranked lists, so they move
+together almost perfectly — when a document drops out of the index, Recall,
+MRR and NDCG all fall for the same queries. Applying a 4× Holm-Bonferroni
+penalty across them buys almost no error control and costs most of the power.
+
+That is not hypothetical. Deleting 4 expected documents from the demo index
+produces:
+
+```
+recall_at_k      diff=-0.1167  CI=[-0.3000,-0.0500]  p_holm×4=0.1336   not significant
+```
+
+An 11.7-point recall drop whose confidence interval **excludes zero outright**,
+reported as "stable" — purely because three metrics that are near-copies of it
+were counted as independent hypotheses. Testing one pre-specified endpoint at
+full alpha (as a clinical trial does with its primary outcome) gives
+`p = 0.0436` on NDCG@5 and the correct `degraded` verdict, while Holm still
+applies to the supporting family where it belongs.
+
+### Significant and material are separate thresholds
+
+A verdict of `degraded` requires the primary metric to be **both**:
+
+* **significant** — adjusted p below alpha *and* the confidence interval
+  excludes zero. Requiring both means a verdict can never rest on a p-value
+  that disagrees with its own interval.
+* **material** — `|difference| ≥ min_effect` (default 0.01).
+
+With a large golden set, a 0.2-point drop can be statistically unambiguous and
+operationally irrelevant. Alerting on it is how a dashboard teaches people to
+ignore it. Both flags are reported separately, so the UI can show "real, but
+below your threshold".
+
+### Hit rate uses McNemar, not a two-proportion z-test
+
+The fraction of queries retrieving anything relevant is a proportion, but the
+two runs score the *same* queries — they are not independent samples, so a
+two-proportion z-test does not apply. **McNemar's exact test** conditions on
+the discordant pairs (the queries whose outcome actually changed), which is
+both valid under pairing and more powerful, since concordant queries carry no
+information about change. The exact binomial form is used rather than the
+chi-squared approximation because discordant counts are usually small.
+
+This test is honest about its own limits. With 5 discordant pairs all moving
+the same way, the smallest achievable two-sided p is 2 × 0.5⁵ = **0.0625** — it
+*cannot* reach significance at α = 0.05 no matter how one-sided the evidence.
+The continuous metrics detect that same regression easily; the hit-rate test
+says so rather than pretending otherwise.
+
+### Reproducibility
+
+The seed is fixed (default `20240517`) and the query ordering is sorted, so
+identical inputs always produce an identical verdict. A monitoring tool that
+returned a different answer on a refresh would be worse than useless. The full
+`DriftConfig` is stored with every assessment, so an old verdict can always be
+reproduced and understood even after the settings change.
+
+### What a verdict looks like
+
+```
+verdict : degraded
+summary : Retrieval quality regressed: NDCG@5 fell 19.3 points (0.958 to 0.765),
+          95% CI [-0.362, -0.086], p=0.0258. Also down: MRR, Recall@5, Precision@5.
+queries : 30   baseline runs: 3
+
+  metric              base     now     diff                 95% CI    p_adj  sig mat
+  recall_at_k       0.9333  0.7667  -0.1667     [-0.3667, -0.1000]   0.0258   Y   Y
+  precision_at_k    0.2067  0.1733  -0.0333     [-0.0733, -0.0200]   0.0236   Y   Y
+  mrr               0.9583  0.7678  -0.1906     [-0.3600, -0.0811]   0.0258   Y   Y
+  ndcg_at_k         0.9582  0.7648  -0.1934     [-0.3622, -0.0864]   0.0258   Y   Y
+  hit rate: 1.000 -> 0.833 | became misses 5, became hits 0, McNemar p=0.0625
+```
+
+Never `{"drift": true}`. A verdict you cannot argue with is not evidence, it is
+an assertion.
+
+### Refusing to answer
+
+The detector returns `insufficient_data` rather than guessing when:
+
+* there is no earlier run scored against the same golden set fingerprint;
+* the only candidates used a different primary cutoff (Recall@5 and Recall@10
+  are different quantities);
+* fewer than `min_queries` queries are shared between the runs.
+
+Each refusal says which, and ignored runs are counted in the warnings.
 
 ---
 
@@ -281,7 +478,7 @@ recorded `model_id` makes the swap visible.
 
 ```bash
 cd backend
-python -m pytest              # 163 tests
+python -m pytest              # 233 tests
 python -m ruff check app tests
 python -m mypy app            # strict mode, clean
 ```
