@@ -28,8 +28,8 @@ Built in stages, each one working end to end before the next begins.
 | 1 | Golden eval set + scoring engine | ✅ Done |
 | 2 | Historical tracking (SQLite) + REST API | ✅ Done |
 | 3 | Statistical drift detection | ✅ Done |
-| 4 | Root-cause diagnostics rule engine | ⬜ Next |
-| 5 | React + TypeScript dashboard | ⬜ |
+| 4 | Root-cause diagnostics rule engine | ✅ Done |
+| 5 | React + TypeScript dashboard | ⬜ Next |
 | 6 | Docker packaging + full documentation | ⬜ |
 
 ---
@@ -152,6 +152,7 @@ Everything is configurable through `DRIFT_`-prefixed environment variables (see
 | GET | `/api/runs/{id}/drift` | Statistical drift assessment for a run |
 | GET | `/api/drift/events` | Past assessments, filterable by verdict |
 | GET | `/api/drift/latest` | Most recent assessment |
+| GET | `/api/runs/{id}/diagnostics` | Heuristic root-cause report for a regression |
 | GET/POST | `/api/golden-sets` | List / create |
 | PUT | `/api/golden-sets/{id}` | Replace judgements |
 | POST | `/api/golden-sets/{id}/activate` | Choose the set runs use by default |
@@ -361,6 +362,133 @@ Each refusal says which, and ignored runs are counted in the warnings.
 
 ---
 
+## Root-cause diagnostics — and why they are framed differently
+
+Once drift is confirmed, the tool tries to explain it. This section exists
+because that explanation is the **one place in the project that says something
+without a rigorous test behind it**, and pretending otherwise would undo the
+care taken in the section above.
+
+### The boundary, stated plainly
+
+| | Drift detection (Stage 3) | Diagnostics (Stage 4) |
+| ---------- | ---------------------------------- | ---------------------------------- |
+| Question | *Did quality really change?* | *What plausibly caused it?* |
+| Method | Paired bootstrap, exact McNemar | Heuristic checks over recorded facts |
+| Output | Interval, p-value, stated α | Ranked observations |
+| Verified | Coverage checked by simulation | Not verifiable — no ground truth |
+| Can it decide? | Yes — it produces the verdict | **No** — it only annotates one |
+
+A diagnostic can never create, upgrade or contradict a verdict. Diagnostics
+are only generated for runs already judged `degraded`, and a healthy run
+returns `diagnostics: null` rather than a speculative list of things that
+happen to have changed.
+
+### The boundary is enforced by vocabulary, not by convention
+
+It would be easy for a "likely cause" heuristic to *feel* as confident as the
+statistics it sits next to. So the types make that hard to write:
+
+* **No numeric confidence anywhere.** `DiagnosticFinding` has no field
+  containing `confidence`, `probability`, `p_value` or `significant` — and
+  there is a test that fails if one is ever added. A float would invite
+  "78% likely", and nothing here could calibrate that number.
+* **Strength is ordinal**, not a score: `direct` → `circumstantial` →
+  `contextual`. The levels describe *how directly the fact links to the
+  queries that broke*, not how likely the explanation is to be true.
+* **Every report carries its own framing.** The serialised payload includes
+  `"basis": "heuristic"` and a disclaimer, so the framing travels with the
+  data instead of living only in documentation nobody re-reads.
+
+### The one number a finding may quote
+
+`explains: 5, out_of: 5` — how many of the queries that actually broke
+reference the thing the rule found. That is arithmetic over observed data, not
+inference, so it is allowed.
+
+Each finding also names the population it counted, because two findings
+quoting "2 of 2" and "23 of 30" against silently different denominators would
+invite exactly the false comparison this is trying to avoid.
+
+Note what the embedding-change rule does here: it reports **no** coverage at
+all. A model swap affects every query at once, so quoting a per-query
+attribution would imply a specificity it does not have. A rule that cannot
+honestly count says nothing.
+
+### The rules
+
+A registry, not an `if`-chain — heuristics are exactly the kind of code that
+accretes, and the accretion has to be additive. Adding one is a new class plus
+a `@register_rule` decorator; the engine, API and existing rules are untouched.
+
+| Rule | Strength | What it observes |
+| ------------------------------ | ---------------- | ---------------------------- |
+| `missing_expected_documents` | direct | Documents the golden set expects are absent from the index |
+| `embedding_model_changed` | direct | The recorded `model_id` or dimensionality differs between runs |
+| `expected_documents_demoted` | direct | Expected documents are still indexed but fell out of the top-k |
+| `corpus_size_changed` | circumstantial | Document count moved by more than 10% |
+| `regression_shape` | contextual | Whether the damage is concentrated or systemic |
+
+Rules perform no I/O. Everything they may inspect is on a `DiagnosticContext`,
+which keeps them trivially testable and means an unreachable vector store
+degrades to *"this check was skipped"* rather than to an exception halfway
+through a report. A rule that raises is isolated and recorded as skipped — the
+verdict is already established by that point, and losing the whole explanation
+would be far worse than losing one line of it.
+
+### Skipped is not the same as passed
+
+Reports distinguish three states, because collapsing them would overstate what
+the tool knows:
+
+* **finding** — the check fired
+* **`checks_passed`** — the check ran and found nothing (*ruled out*)
+* **`checks_skipped`** — the check could not run, with the reason (*unknown*)
+
+Negative results are kept deliberately. "The embedding model is unchanged" is
+worth as much to someone debugging as any positive finding, and a report that
+only ever shows hits looks like it is fishing.
+
+### Two causes, correctly discriminated
+
+Both scenarios below produce a `degraded` verdict with a comparable drop. The
+diagnostics tell them apart — and the *ruled out* lists are mirror images:
+
+**Six expected documents deleted from the index**
+
+```
+1. [DIRECT]         Expected documents missing from the index   [explains 5/5]
+   6 document(s) the golden set expects are absent from the index. 5 of the 5
+   queries that stopped retrieving anything relevant expect at least one of them.
+2. [CIRCUMSTANTIAL] Indexed document count changed
+   The index shrank from 32 to 26 documents (-19%).
+3. [CONTEXTUAL]     Shape of the regression                     [explains 6/30]
+   6 of 30 queries scored worse (20%). A small, specific set of queries moved,
+   which points at particular documents rather than at the index as a whole.
+
+ruled out: embedding_model_changed, expected_documents_demoted
+```
+
+**A re-index that created duplicate fragments (nothing deleted)**
+
+```
+1. [DIRECT]         Expected documents still indexed but no longer retrieved  [2/2]
+   The content is intact; what changed is the ranking.
+2. [CIRCUMSTANTIAL] Indexed document count changed
+   The index grew from 32 to 135 documents (+322%).
+3. [CONTEXTUAL]     Shape of the regression                     [explains 23/30]
+   23 of 30 queries scored worse (77%). Most of the golden set moved together,
+   which points at something systemic.
+
+ruled out: embedding_model_changed, missing_expected_documents
+```
+
+The first is a content problem, the second a ranking problem, and the
+`expected_documents_demoted` rule is the discriminator between them: it fires
+only when the expected documents are *verifiably still in the index*.
+
+---
+
 ## Storing history
 
 Runs go into SQLite through SQLAlchemy, with **Alembic** as the only source of
@@ -478,7 +606,7 @@ recorded `model_id` makes the swap visible.
 
 ```bash
 cd backend
-python -m pytest              # 233 tests
+python -m pytest              # 272 tests
 python -m ruff check app tests
 python -m mypy app            # strict mode, clean
 ```
