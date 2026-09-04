@@ -7,15 +7,26 @@ milliseconds without a vector store running anywhere.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import ClassVar
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from app.api import create_app
 from app.connectors.base import VectorStoreConnector
+from app.core.config import Settings, get_settings
 from app.core.errors import VectorStoreUnavailableError
+from app.db.migrations import upgrade_to_head
+from app.db.session import reset_engine, session_scope
 from app.domain.golden_set import ExpectedDocument, GoldenQuery, GoldenSet
+from app.domain.metrics import EvaluationResult, MetricSet, QueryScore
 from app.domain.retrieval import RetrievedDocument, VectorStoreInfo
+from app.repositories.golden_sets import GoldenSetRepository
+from app.repositories.runs import RunRepository
 
 
 class FakeConnector(VectorStoreConnector):
@@ -119,4 +130,157 @@ def perfect_connector() -> FakeConnector:
 def perfect_golden_set() -> GoldenSet:
     return make_golden_set(
         {"alpha": ["doc-a"], "beta": ["doc-b"], "gamma": ["doc-c"]}
+    )
+
+
+# ----------------------------------------------------------------------
+# Database and API fixtures
+# ----------------------------------------------------------------------
+@pytest.fixture
+def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Settings]:
+    """Isolated settings backed by a throwaway SQLite file and memory Chroma.
+
+    Configured through the environment rather than by constructing Settings
+    directly, so the tests exercise the same config path production uses.
+    """
+    monkeypatch.setenv("DRIFT_ENVIRONMENT", "test")
+    monkeypatch.setenv("DRIFT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "DRIFT_DATABASE_URL", f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    )
+    monkeypatch.setenv("DRIFT_CHROMA_MODE", "memory")
+    monkeypatch.setenv("DRIFT_CHROMA_COLLECTION", "test-collection")
+    monkeypatch.setenv("DRIFT_BOOTSTRAP_DEMO", "false")
+
+    get_settings.cache_clear()
+    reset_engine()
+    resolved = get_settings()
+    # The real Alembic migrations run for every test: a schema that only
+    # exists via metadata.create_all is a schema nobody has proved deployable.
+    upgrade_to_head(resolved)
+    try:
+        yield resolved
+    finally:
+        reset_engine()
+        get_settings.cache_clear()
+
+
+@pytest.fixture
+def session(settings: Settings) -> Iterator[Session]:
+    """A committed-on-exit session against the migrated test database."""
+    with session_scope(settings) as db_session:
+        yield db_session
+
+
+@pytest.fixture
+def run_repository(session: Session) -> RunRepository:
+    return RunRepository(session)
+
+
+@pytest.fixture
+def golden_set_repository(session: Session) -> GoldenSetRepository:
+    return GoldenSetRepository(session)
+
+
+@pytest.fixture
+def api_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """A live application, bootstrapped with the demo corpus and golden set.
+
+    Bootstrap is left on so the tests also cover startup: migrations, corpus
+    indexing and golden set import all have to work for these to pass.
+    """
+    monkeypatch.setenv("DRIFT_ENVIRONMENT", "test")
+    monkeypatch.setenv("DRIFT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "DRIFT_DATABASE_URL", f"sqlite:///{(tmp_path / 'api.db').as_posix()}"
+    )
+    monkeypatch.setenv("DRIFT_CHROMA_MODE", "memory")
+    monkeypatch.setenv("DRIFT_CHROMA_COLLECTION", "api-test")
+    monkeypatch.setenv("DRIFT_BOOTSTRAP_DEMO", "true")
+
+    get_settings.cache_clear()
+    reset_engine()
+    try:
+        with TestClient(create_app(get_settings())) as client:
+            yield client
+    finally:
+        reset_engine()
+        get_settings.cache_clear()
+
+
+def make_evaluation_result(
+    *,
+    recall: float = 0.9,
+    ndcg: float = 0.9,
+    mrr: float = 0.9,
+    precision: float = 0.2,
+    document_count: int = 100,
+    embedding_model: str = "fake-embedder-v1",
+    fingerprint: str = "fingerprint-a",
+    name: str = "test-set",
+    version: str = "1",
+    started_at: datetime | None = None,
+    k_values: tuple[int, ...] = (1, 5),
+    primary_k: int = 5,
+) -> EvaluationResult:
+    """A synthetic run result, for testing persistence without scoring."""
+    moment = started_at or datetime.now(UTC)
+    return EvaluationResult(
+        golden_set_name=name,
+        golden_set_version=version,
+        golden_set_fingerprint=fingerprint,
+        query_count=2,
+        primary_k=primary_k,
+        metrics=tuple(
+            MetricSet(
+                k=k,
+                query_count=2,
+                recall_at_k=recall,
+                precision_at_k=precision,
+                mrr=mrr,
+                ndcg_at_k=ndcg,
+            )
+            for k in k_values
+        ),
+        query_scores=(
+            QueryScore(
+                query_id="q1",
+                query="alpha",
+                k=primary_k,
+                retrieved_ids=("doc-a", "doc-x"),
+                relevant_ids=("doc-a",),
+                hits=1,
+                recall_at_k=1.0,
+                precision_at_k=0.5,
+                reciprocal_rank=1.0,
+                ndcg_at_k=1.0,
+                first_relevant_rank=1,
+                latency_ms=1.5,
+            ),
+            QueryScore(
+                query_id="q2",
+                query="beta",
+                k=primary_k,
+                retrieved_ids=("doc-x", "doc-y"),
+                relevant_ids=("doc-b",),
+                hits=0,
+                recall_at_k=0.0,
+                precision_at_k=0.0,
+                reciprocal_rank=0.0,
+                ndcg_at_k=0.0,
+                first_relevant_rank=None,
+                latency_ms=1.5,
+            ),
+        ),
+        store=VectorStoreInfo(
+            connector="fake",
+            collection="test-collection",
+            document_count=document_count,
+            embedding_model=embedding_model,
+            embedding_dimensions=8,
+        ),
+        started_at=moment,
+        finished_at=moment,
     )

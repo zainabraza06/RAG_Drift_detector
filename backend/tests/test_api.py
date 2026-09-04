@@ -1,0 +1,395 @@
+"""End-to-end HTTP tests.
+
+These drive a fully bootstrapped application: real migrations, the demo corpus
+indexed into an in-process Chroma, the demo golden set imported, and real
+scoring behind ``POST /runs``. Nothing here is mocked, so a passing suite means
+``docker compose up`` followed by clicking "Run Evaluation Now" works.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+API = "/api"
+
+
+def _new_golden_set(name: str = "extra", version: str = "1") -> dict[str, Any]:
+    return {
+        "name": name,
+        "version": version,
+        "description": "created over HTTP",
+        "queries": [
+            {
+                "query_id": "q-invoice",
+                "query": "download last month invoice",
+                "expected_documents": [
+                    {"document_id": "doc-billing-001", "relevance": 3}
+                ],
+            },
+            {
+                "query": "rotate a leaked api key",
+                "expected_documents": [{"document_id": "doc-auth-004"}],
+            },
+        ],
+    }
+
+
+# ----------------------------------------------------------------------
+# Bootstrap and system endpoints
+# ----------------------------------------------------------------------
+class TestBootstrapAndHealth:
+    def test_startup_indexes_the_demo_corpus_and_golden_set(
+        self, api_client: TestClient
+    ) -> None:
+        info = api_client.get(f"{API}/system/info").json()
+        assert info["vector_store"]["reachable"] is True
+        assert info["vector_store"]["document_count"] == 32
+        assert info["active_golden_set"]["name"] == "acme-cloud-support"
+        assert info["schema_revision"] == "0001_initial_schema"
+
+    def test_health_reports_both_dependencies(self, api_client: TestClient) -> None:
+        response = api_client.get(f"{API}/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert body == {
+            "status": "ok",
+            "version": body["version"],
+            "database": True,
+            "vector_store": True,
+            "message": None,
+        }
+
+    def test_openapi_schema_is_served(self, api_client: TestClient) -> None:
+        schema = api_client.get("/openapi.json").json()
+        assert f"{API}/runs" in schema["paths"]
+        assert f"{API}/golden-sets/{{golden_set_id}}" in schema["paths"]
+
+
+class TestDashboard:
+    def test_empty_state_is_explicit(self, api_client: TestClient) -> None:
+        body = api_client.get(f"{API}/dashboard").json()
+        # "never evaluated" must be distinguishable from "nothing matched",
+        # or the UI cannot choose between onboarding and an empty list.
+        assert body["has_runs"] is False
+        assert body["total_runs"] == 0
+        assert body["latest_run"] is None
+        assert body["metric_deltas"] == {}
+        assert body["active_golden_set"]["golden_set"]["name"] == "acme-cloud-support"
+
+    def test_summarises_the_latest_run(self, api_client: TestClient) -> None:
+        api_client.post(f"{API}/runs", json={})
+        body = api_client.get(f"{API}/dashboard").json()
+
+        assert body["has_runs"] is True
+        assert body["total_runs"] == 1
+        assert body["document_count"] == 32
+        assert body["primary_metrics"]["k"] == 5
+        assert body["last_run_at"].endswith("Z")
+        # One run has nothing to compare against.
+        assert body["metric_deltas"] == {}
+
+    def test_deltas_appear_once_there_is_a_baseline(
+        self, api_client: TestClient
+    ) -> None:
+        api_client.post(f"{API}/runs", json={})
+        api_client.post(f"{API}/runs", json={})
+        body = api_client.get(f"{API}/dashboard").json()
+
+        assert body["previous_run"] is not None
+        assert set(body["metric_deltas"]) == {
+            "recall_at_k",
+            "precision_at_k",
+            "mrr",
+            "ndcg_at_k",
+        }
+
+
+# ----------------------------------------------------------------------
+# Runs
+# ----------------------------------------------------------------------
+class TestRuns:
+    def test_creating_a_run_scores_the_active_golden_set(
+        self, api_client: TestClient
+    ) -> None:
+        response = api_client.post(f"{API}/runs", json={"trigger": "api"})
+        assert response.status_code == 201
+
+        body = response.json()
+        assert body["golden_set"]["name"] == "acme-cloud-support"
+        assert body["query_count"] == 30
+        assert body["trigger"] == "api"
+        assert [m["k"] for m in body["metrics"]] == [1, 3, 5, 10]
+        # Real retrieval against the real demo corpus.
+        assert body["metrics"][2]["recall_at_k"] > 0.8
+        assert body["store"]["document_count"] == 32
+
+    def test_a_run_can_target_a_specific_golden_set(
+        self, api_client: TestClient
+    ) -> None:
+        created = api_client.post(
+            f"{API}/golden-sets", json=_new_golden_set()
+        ).json()
+        body = api_client.post(
+            f"{API}/runs", json={"golden_set_id": created["golden_set_id"]}
+        ).json()
+        assert body["golden_set"]["name"] == "extra"
+        assert body["query_count"] == 2
+
+    def test_listing_is_paginated_and_newest_first(
+        self, api_client: TestClient
+    ) -> None:
+        for _ in range(3):
+            api_client.post(f"{API}/runs", json={})
+
+        page = api_client.get(f"{API}/runs", params={"limit": 2}).json()
+        assert page["total"] == 3
+        assert len(page["items"]) == 2
+        assert page["items"][0]["started_at"] >= page["items"][1]["started_at"]
+
+    def test_latest_returns_null_before_any_run(
+        self, api_client: TestClient
+    ) -> None:
+        assert api_client.get(f"{API}/runs/latest").json() is None
+
+    def test_latest_is_not_parsed_as_a_run_id(self, api_client: TestClient) -> None:
+        created = api_client.post(f"{API}/runs", json={}).json()
+        latest = api_client.get(f"{API}/runs/latest").json()
+        assert latest["run_id"] == created["run_id"]
+
+    def test_per_query_detail(self, api_client: TestClient) -> None:
+        created = api_client.post(f"{API}/runs", json={}).json()
+        detail = api_client.get(f"{API}/runs/{created['run_id']}/queries").json()
+
+        assert detail["run"]["run_id"] == created["run_id"]
+        assert len(detail["query_scores"]) == 30
+        score = detail["query_scores"][0]
+        assert {"query_id", "recall_at_k", "ndcg_at_k", "retrieved_ids"} <= set(score)
+
+    def test_deleting_a_run(self, api_client: TestClient) -> None:
+        created = api_client.post(f"{API}/runs", json={}).json()
+        assert api_client.delete(f"{API}/runs/{created['run_id']}").status_code == 204
+        assert api_client.get(f"{API}/runs/{created['run_id']}").status_code == 404
+
+    def test_missing_run_uses_the_standard_error_envelope(
+        self, api_client: TestClient
+    ) -> None:
+        response = api_client.get(f"{API}/runs/nope")
+        assert response.status_code == 404
+        assert response.json() == {
+            "error": {"code": "run_not_found", "message": "run 'nope' not found"}
+        }
+
+
+# ----------------------------------------------------------------------
+# Metrics
+# ----------------------------------------------------------------------
+class TestMetrics:
+    def test_series_is_empty_before_any_run(self, api_client: TestClient) -> None:
+        body = api_client.get(
+            f"{API}/metrics/series", params={"metric": "recall_at_k", "k": 5}
+        ).json()
+        assert body["points"] == []
+
+    def test_series_points_are_chart_ready(self, api_client: TestClient) -> None:
+        api_client.post(f"{API}/runs", json={})
+        api_client.post(f"{API}/runs", json={})
+
+        body = api_client.get(
+            f"{API}/metrics/series", params={"metric": "ndcg_at_k", "k": 5}
+        ).json()
+        assert body["metric"] == "ndcg_at_k"
+        assert len(body["points"]) == 2
+        # Oldest first, and timestamps carry an explicit UTC offset.
+        assert body["points"][0]["recorded_at"] <= body["points"][1]["recorded_at"]
+        assert body["points"][0]["recorded_at"].endswith("Z")
+        assert body["points"][0]["document_count"] == 32
+
+    def test_trends_returns_every_metric_in_one_request(
+        self, api_client: TestClient
+    ) -> None:
+        api_client.post(f"{API}/runs", json={})
+        body = api_client.get(f"{API}/metrics/trends", params={"k": 5}).json()
+        assert [series["metric"] for series in body] == [
+            "recall_at_k",
+            "precision_at_k",
+            "mrr",
+            "ndcg_at_k",
+        ]
+        assert all(len(series["points"]) == 1 for series in body)
+
+    def test_cutoffs_reflect_stored_data(self, api_client: TestClient) -> None:
+        assert api_client.get(f"{API}/metrics/cutoffs").json() == []
+        api_client.post(f"{API}/runs", json={})
+        assert api_client.get(f"{API}/metrics/cutoffs").json() == [1, 3, 5, 10]
+
+    def test_unknown_metric_is_a_400_with_a_usable_message(
+        self, api_client: TestClient
+    ) -> None:
+        response = api_client.get(f"{API}/metrics/series", params={"metric": "f1"})
+        assert response.status_code == 400
+        error = response.json()["error"]
+        assert error["code"] == "unknown_metric"
+        assert "recall_at_k" in error["message"]
+
+
+# ----------------------------------------------------------------------
+# Golden sets
+# ----------------------------------------------------------------------
+class TestGoldenSets:
+    def test_the_demo_set_is_listed(self, api_client: TestClient) -> None:
+        page = api_client.get(f"{API}/golden-sets").json()
+        assert page["total"] == 1
+        assert page["items"][0]["golden_set"]["name"] == "acme-cloud-support"
+        assert page["items"][0]["source"] == "file"
+        assert page["items"][0]["is_active"] is True
+
+    def test_creating_generates_missing_query_ids(
+        self, api_client: TestClient
+    ) -> None:
+        body = api_client.post(f"{API}/golden-sets", json=_new_golden_set()).json()
+        ids = [q["query_id"] for q in body["golden_set"]["queries"]]
+        assert ids == ["q-invoice", "q2"]
+
+    def test_creating_with_activate_switches_the_active_set(
+        self, api_client: TestClient
+    ) -> None:
+        payload = _new_golden_set() | {"activate": True}
+        created = api_client.post(f"{API}/golden-sets", json=payload).json()
+        assert created["is_active"] is True
+
+        active = api_client.get(f"{API}/golden-sets/active").json()
+        assert active["golden_set_id"] == created["golden_set_id"]
+
+    def test_duplicate_name_and_version_conflicts(
+        self, api_client: TestClient
+    ) -> None:
+        api_client.post(f"{API}/golden-sets", json=_new_golden_set())
+        response = api_client.post(f"{API}/golden-sets", json=_new_golden_set())
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "golden_set_exists"
+
+    def test_editing_judgements_changes_the_fingerprint(
+        self, api_client: TestClient
+    ) -> None:
+        created = api_client.post(f"{API}/golden-sets", json=_new_golden_set()).json()
+        set_id = created["golden_set_id"]
+
+        revised = _new_golden_set()
+        revised["queries"][0]["query"] = "a completely different question"
+        updated = api_client.put(f"{API}/golden-sets/{set_id}", json=revised).json()
+
+        # The ruler changed, so runs either side of the edit are no longer
+        # comparable - and the fingerprint is what enforces that.
+        assert updated["golden_set"]["queries"][0]["query"] == (
+            "a completely different question"
+        )
+        assert api_client.get(f"{API}/golden-sets/{set_id}").status_code == 200
+
+    def test_editing_can_reuse_query_ids(self, api_client: TestClient) -> None:
+        created = api_client.post(f"{API}/golden-sets", json=_new_golden_set()).json()
+        set_id = created["golden_set_id"]
+
+        revised = _new_golden_set()
+        revised["queries"].append(
+            {
+                "query_id": "q-extra",
+                "query": "keep data inside the EU",
+                "expected_documents": [{"document_id": "doc-data-003"}],
+            }
+        )
+        response = api_client.put(f"{API}/golden-sets/{set_id}", json=revised)
+        assert response.status_code == 200
+        assert len(response.json()["golden_set"]["queries"]) == 3
+
+    def test_activate_endpoint(self, api_client: TestClient) -> None:
+        created = api_client.post(f"{API}/golden-sets", json=_new_golden_set()).json()
+        set_id = created["golden_set_id"]
+        assert (
+            api_client.post(f"{API}/golden-sets/{set_id}/activate").json()["is_active"]
+            is True
+        )
+
+    def test_deleting_the_active_set_promotes_a_survivor(
+        self, api_client: TestClient
+    ) -> None:
+        payload = _new_golden_set() | {"activate": True}
+        created = api_client.post(f"{API}/golden-sets", json=payload).json()
+
+        assert (
+            api_client.delete(f"{API}/golden-sets/{created['golden_set_id']}").status_code
+            == 204
+        )
+        # An installation must never be left unable to evaluate anything.
+        active = api_client.get(f"{API}/golden-sets/active")
+        assert active.status_code == 200
+        assert active.json()["golden_set"]["name"] == "acme-cloud-support"
+
+    def test_runs_survive_deletion_of_their_golden_set(
+        self, api_client: TestClient
+    ) -> None:
+        created = api_client.post(f"{API}/golden-sets", json=_new_golden_set()).json()
+        run = api_client.post(
+            f"{API}/runs", json={"golden_set_id": created["golden_set_id"]}
+        ).json()
+
+        api_client.delete(f"{API}/golden-sets/{created['golden_set_id']}")
+
+        surviving = api_client.get(f"{API}/runs/{run['run_id']}").json()
+        assert surviving["golden_set"]["name"] == "extra"
+
+    def test_missing_set_is_a_404(self, api_client: TestClient) -> None:
+        response = api_client.get(f"{API}/golden-sets/999")
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "golden_set_not_found"
+
+    @pytest.mark.parametrize(
+        ("payload", "field"),
+        [
+            ({"name": "x", "queries": []}, "queries"),
+            ({"name": "", "queries": [{"query": "a", "expected_documents": []}]}, "name"),
+        ],
+    )
+    def test_validation_errors_name_the_offending_field(
+        self, api_client: TestClient, payload: dict[str, Any], field: str
+    ) -> None:
+        response = api_client.post(f"{API}/golden-sets", json=payload)
+        assert response.status_code == 422
+
+        error = response.json()["error"]
+        assert error["code"] == "validation_error"
+        assert any(item["field"].startswith(field) for item in error["detail"])
+
+    def test_duplicate_documents_in_a_query_are_rejected(
+        self, api_client: TestClient
+    ) -> None:
+        payload = _new_golden_set()
+        payload["queries"][0]["expected_documents"].append(
+            {"document_id": "doc-billing-001"}
+        )
+        response = api_client.post(f"{API}/golden-sets", json=payload)
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "invalid_golden_set"
+
+    def test_importing_a_file(self, api_client: TestClient) -> None:
+        from app.core.config import get_settings
+
+        response = api_client.post(
+            f"{API}/golden-sets/import",
+            json={
+                "path": str(get_settings().demo_golden_set_path),
+                "version": "imported-2",
+                "activate": False,
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["golden_set"]["version"] == "imported-2"
+
+    def test_importing_a_missing_file_is_a_400(self, api_client: TestClient) -> None:
+        response = api_client.post(
+            f"{API}/golden-sets/import", json={"path": "/nope/missing.json"}
+        )
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "invalid_golden_set"
