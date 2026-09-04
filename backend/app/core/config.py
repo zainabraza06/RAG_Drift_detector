@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 #: Repository root, resolved from this file: app/core/config.py -> backend -> repo
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -57,7 +57,12 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 384
 
     # -- Evaluation -----------------------------------------------------
-    eval_k_values: tuple[int, ...] = (1, 3, 5, 10)
+    # NoDecode is load-bearing, not decoration. For a complex-typed field
+    # pydantic-settings JSON-decodes the environment value *before* any
+    # `mode="before"` validator runs, so `DRIFT_EVAL_K_VALUES=1,3,5,10` would
+    # raise a SettingsError at import time rather than reaching _split_csv.
+    # Opting out of that decode is what lets the documented CSV form work.
+    eval_k_values: Annotated[tuple[int, ...], NoDecode] = (1, 3, 5, 10)
     eval_primary_k: int = 5
 
     # -- Demo data ------------------------------------------------------
@@ -79,7 +84,8 @@ class Settings(BaseSettings):
     )
 
     # -- API ------------------------------------------------------------
-    cors_origins: tuple[str, ...] = (
+    # Same reasoning as eval_k_values above.
+    cors_origins: Annotated[tuple[str, ...], NoDecode] = (
         "http://localhost:5173",
         "http://localhost:3000",
         "http://localhost:8080",
@@ -88,7 +94,12 @@ class Settings(BaseSettings):
     @field_validator("eval_k_values", "cors_origins", mode="before")
     @classmethod
     def _split_csv(cls, value: object) -> object:
-        """Allow ``DRIFT_EVAL_K_VALUES=1,3,5`` style env vars."""
+        """Parse the ``DRIFT_EVAL_K_VALUES=1,3,5`` comma-separated form.
+
+        Reachable only because the fields are annotated ``NoDecode``; without
+        that, pydantic-settings would have already failed trying to read the
+        value as JSON.
+        """
         if isinstance(value, str):
             return tuple(part.strip() for part in value.split(",") if part.strip())
         return value
