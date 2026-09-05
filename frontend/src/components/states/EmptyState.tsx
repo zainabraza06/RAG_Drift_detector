@@ -12,10 +12,8 @@ interface EmptyStateProps {
 }
 
 /**
- * A designed "nothing here yet".
- *
- * Always explains *why* it is empty and what to do next. An empty panel with
- * no explanation reads as a bug, and users report it as one.
+ * Always explains *why* it is empty and what to do next. An unexplained empty
+ * panel reads as a bug, and gets reported as one.
  */
 export function EmptyState({
   icon: Icon,
@@ -27,15 +25,15 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex animate-fade-in flex-col items-center justify-center px-6 py-14 text-center",
+        "flex animate-fade-in flex-col items-center justify-center px-6 py-16 text-center",
         className,
       )}
     >
-      <span className="mb-4 grid h-12 w-12 place-items-center rounded-xl border border-line bg-surface-muted">
-        <Icon className="h-5 w-5 text-content-subtle" aria-hidden />
+      <span className="mb-4 grid h-9 w-9 place-items-center rounded-lg border border-line bg-inset">
+        <Icon className="h-4 w-4 text-ink-tertiary" aria-hidden />
       </span>
-      <h3 className="text-base font-semibold text-content">{title}</h3>
-      <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-content-muted">
+      <h3 className="text-heading text-ink">{title}</h3>
+      <p className="mt-1.5 max-w-[38ch] text-body leading-6 text-ink-secondary">
         {description}
       </p>
       {action ? <div className="mt-5">{action}</div> : null}

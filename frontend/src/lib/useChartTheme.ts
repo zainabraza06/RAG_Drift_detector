@@ -10,25 +10,25 @@ import { useEffect, useState } from "react";
  * rest of the UI instead of needing a reload.
  */
 export interface ChartTheme {
-  brand: string;
+  accent: string;
   grid: string;
   axis: string;
-  critical: string;
+  danger: string;
   warning: string;
-  healthy: string;
+  success: string;
   surface: string;
-  border: string;
+  line: string;
 }
 
 const TOKENS: Record<keyof ChartTheme, string> = {
-  brand: "--brand",
-  grid: "--border",
-  axis: "--text-subtle",
-  critical: "--critical",
+  accent: "--accent",
+  grid: "--line-subtle",
+  axis: "--ink-tertiary",
+  danger: "--danger",
   warning: "--warning",
-  healthy: "--healthy",
-  surface: "--surface-raised",
-  border: "--border-strong",
+  success: "--success",
+  surface: "--bg-surface",
+  line: "--line-strong",
 };
 
 function readTheme(): ChartTheme {

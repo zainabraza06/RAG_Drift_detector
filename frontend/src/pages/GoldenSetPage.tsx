@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/states/EmptyState";
 import { ErrorState } from "@/components/states/ErrorState";
 import { ListSkeleton } from "@/components/states/LoadingState";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, IconButton } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -124,10 +124,8 @@ export function GoldenSetPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-content">
-            Golden set
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-content-muted">
+          <h1 className="text-title text-ink">Golden set</h1>
+          <p className="mt-1.5 max-w-prose text-body text-ink-secondary">
             The ground truth every run is scored against. Editing the judgements
             changes the set's fingerprint, which deliberately stops earlier runs
             from being compared against later ones.
@@ -229,7 +227,7 @@ function GoldenSetEditor({ stored }: { stored: StoredGoldenSet }) {
                 v{stored.golden_set.version}
               </span>
               {stored.is_active ? (
-                <Badge tone="brand" icon={<Star className="h-3 w-3" aria-hidden />}>
+                <Badge tone="accent" icon={<Star className="h-3 w-3" aria-hidden />}>
                   Active
                 </Badge>
               ) : null}
@@ -364,47 +362,62 @@ function QueryRow({
   return (
     <div
       className={cn(
-        "rounded-lg border bg-surface p-4 transition-colors duration-150",
-        error ? "border-critical/40" : "border-line hover:border-line-strong",
+        "rounded-md border bg-surface px-4 py-4 transition-colors duration-fast ease-out",
+        error ? "border-danger-line" : "border-line hover:border-line-strong",
       )}
     >
+      {/* Row 1 — the query itself, which is what a reader scans for. */}
       <div className="flex items-start gap-3">
-        <span className="tnum mt-2 w-6 shrink-0 text-right text-xs text-content-subtle">
+        <span className="tnum mt-2 w-5 shrink-0 text-right text-label text-ink-disabled">
           {index + 1}
         </span>
+        <Input
+          value={query.query}
+          invalid={Boolean(error)}
+          placeholder="How a user would actually ask this…"
+          aria-label={`Query ${index + 1} text`}
+          onChange={(event) => onChange({ ...query, query: event.target.value })}
+        />
+        <IconButton
+          aria-label={`Remove query ${index + 1}`}
+          size="sm"
+          className="mt-0.5 hover:text-danger-text"
+          icon={<Trash2 className="h-3.5 w-3.5" aria-hidden />}
+          onClick={onRemove}
+        />
+      </div>
 
-        <div className="min-w-0 flex-1 space-y-2.5">
+      <div className="mt-4 space-y-4 pl-8">
+        {/* Row 2 — identifier, clearly labelled rather than a bare box. */}
+        <div className="flex items-center gap-2">
+          <label
+            className="text-micro uppercase text-ink-tertiary"
+            htmlFor={`query-id-${index}`}
+          >
+            Query id
+          </label>
           <Input
-            value={query.query}
-            invalid={Boolean(error)}
-            placeholder="How a user would actually ask this…"
-            aria-label={`Query ${index + 1} text`}
-            onChange={(event) => onChange({ ...query, query: event.target.value })}
+            id={`query-id-${index}`}
+            value={query.query_id}
+            inputSize="sm"
+            placeholder="generated if left blank"
+            className="w-56 font-mono text-[11px]"
+            onChange={(event) => onChange({ ...query, query_id: event.target.value })}
           />
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              value={query.query_id}
-              placeholder="query id (optional)"
-              aria-label={`Query ${index + 1} identifier`}
-              className="h-8 w-44 font-mono text-xs"
-              onChange={(event) =>
-                onChange({ ...query, query_id: event.target.value })
-              }
-            />
-            <span className="text-2xs text-content-subtle">
-              Expected documents
-            </span>
-          </div>
-
-          <div className="space-y-2">
+        {/* Row 3 — the judgements. */}
+        <div>
+          <p className="text-micro uppercase text-ink-tertiary">Expected documents</p>
+          <div className="mt-2 space-y-2">
             {query.expected_documents.map((doc, docIndex) => (
               <div key={docIndex} className="flex items-center gap-2">
                 <Input
                   value={doc.document_id}
+                  inputSize="sm"
                   placeholder="document id"
                   aria-label={`Expected document ${docIndex + 1}`}
-                  className="h-8 font-mono text-xs"
+                  className="font-mono text-[11px]"
                   onChange={(event) =>
                     onChange({
                       ...query,
@@ -418,7 +431,9 @@ function QueryRow({
                 />
                 <Select
                   value={doc.relevance}
+                  selectSize="sm"
                   aria-label="Relevance grade"
+                  className="w-36"
                   onChange={(event) =>
                     onChange({
                       ...query,
@@ -434,10 +449,11 @@ function QueryRow({
                   <option value={2}>relevant</option>
                   <option value={1}>marginal</option>
                 </Select>
-                <Button
-                  variant="ghost"
+                <IconButton
+                  aria-label={`Remove expected document ${docIndex + 1}`}
                   size="sm"
-                  aria-label="Remove document"
+                  className="hover:text-danger-text"
+                  icon={<Trash2 className="h-3.5 w-3.5" aria-hidden />}
                   onClick={() =>
                     onChange({
                       ...query,
@@ -446,47 +462,36 @@ function QueryRow({
                       ),
                     })
                   }
-                >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                </Button>
+                />
               </div>
             ))}
-
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<Plus className="h-3 w-3" aria-hidden />}
-              onClick={() =>
-                onChange({
-                  ...query,
-                  expected_documents: [
-                    ...query.expected_documents,
-                    { document_id: "", relevance: 1 },
-                  ],
-                })
-              }
-            >
-              Add expected document
-            </Button>
           </div>
 
-          {error ? (
-            <p className="flex items-center gap-1.5 text-xs text-critical">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              {error}
-            </p>
-          ) : null}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2"
+            icon={<Plus className="h-3 w-3" aria-hidden />}
+            onClick={() =>
+              onChange({
+                ...query,
+                expected_documents: [
+                  ...query.expected_documents,
+                  { document_id: "", relevance: 1 },
+                ],
+              })
+            }
+          >
+            Add expected document
+          </Button>
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`Remove query ${index + 1}`}
-          className="mt-1 shrink-0 hover:text-critical"
-          onClick={onRemove}
-        >
-          <Trash2 className="h-4 w-4" aria-hidden />
-        </Button>
+        {error ? (
+          <p className="flex items-center gap-1.5 text-small text-danger-text">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {error}
+          </p>
+        ) : null}
       </div>
     </div>
   );

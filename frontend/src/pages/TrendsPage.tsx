@@ -92,14 +92,14 @@ export function TrendsPage() {
 
       {hasPoints ? (
         <>
-          <p className="text-sm text-content-muted">
+          <p className="text-small text-ink-secondary">
             Showing {pointCount} run{pointCount === 1 ? "" : "s"} at k={k}.
             {regressionCount ? (
               <>
                 {" "}
                 <span className="inline-flex items-center gap-1.5">
                   <span
-                    className="inline-block h-2 w-2 rounded-full bg-critical"
+                    className="inline-block h-1.5 w-1.5 rounded-full bg-danger"
                     aria-hidden
                   />
                   {regressionCount} marked regression
@@ -147,10 +147,8 @@ function PageHeading({ controls }: { controls?: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-content">
-          Metric trends
-        </h1>
-        <p className="mt-1 text-sm text-content-muted">
+        <h1 className="text-title text-ink">Metric trends</h1>
+        <p className="mt-1.5 max-w-prose text-body text-ink-secondary">
           Retrieval quality over time, with detected regressions marked in place.
         </p>
       </div>

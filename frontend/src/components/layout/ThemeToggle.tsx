@@ -11,10 +11,8 @@ const OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
 ];
 
 /**
- * A three-way segmented control rather than a binary switch.
- *
- * "System" is a real preference, and a two-state toggle silently overrides it
- * the first time a user clicks.
+ * Three states, not two. "System" is a real preference, and a binary toggle
+ * silently overrides it the first time a user clicks.
  */
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
@@ -22,8 +20,6 @@ export function ThemeToggle() {
   useEffect(() => {
     applyTheme(theme);
     if (theme !== "system") return;
-
-    // Follow the OS while set to system, without a reload.
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => applyTheme("system");
     media.addEventListener("change", onChange);
@@ -34,7 +30,7 @@ export function ThemeToggle() {
     <div
       role="radiogroup"
       aria-label="Colour theme"
-      className="flex items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5"
+      className="flex items-center gap-0.5 rounded-md border border-line bg-inset p-0.5"
     >
       {OPTIONS.map((option) => {
         const active = theme === option.value;
@@ -47,10 +43,10 @@ export function ThemeToggle() {
             title={option.label}
             onClick={() => setTheme(option.value)}
             className={cn(
-              "rounded-md p-1.5 transition-colors duration-150",
+              "rounded-sm p-1 transition-colors duration-fast ease-out",
               active
-                ? "bg-surface-muted text-content"
-                : "text-content-subtle hover:text-content-muted",
+                ? "bg-surface text-ink shadow-xs"
+                : "text-ink-tertiary hover:text-ink-secondary",
             )}
           >
             <option.icon className="h-3.5 w-3.5" aria-hidden />

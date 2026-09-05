@@ -10,7 +10,6 @@ import {
   YAxis,
 } from "recharts";
 
-import { cn } from "@/lib/cn";
 import { formatChartTime, formatDateTime, formatMetric, shortId } from "@/lib/format";
 import type { DriftVerdict, MetricName, MetricSeries } from "@/lib/types";
 import { METRIC_DESCRIPTIONS, METRIC_LABELS } from "@/lib/types";
@@ -76,17 +75,17 @@ export function MetricTrendChart({
   const gradientId = `gradient-${metric}-${k}`;
 
   return (
-    <div className="rounded-xl border border-line bg-surface p-5 shadow-card transition-[border-color] duration-200 hover:border-line-strong">
-      <div className="mb-1 flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-semibold text-content">
+    <div className="rounded-lg border border-line bg-surface px-5 py-4 shadow-xs transition-colors duration-fast ease-out hover:border-line-strong">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-subheading text-ink">
           {METRIC_LABELS[metric]}
           {metric === "mrr" ? "" : `@${k}`}
         </h3>
-        <span className="tnum text-xs text-content-subtle">
-          latest {formatMetric(data.at(-1)?.value ?? null)}
+        <span className="tnum text-body font-medium text-ink">
+          {formatMetric(data.at(-1)?.value ?? null)}
         </span>
       </div>
-      <p className="mb-4 text-xs leading-relaxed text-content-subtle">
+      <p className="mb-5 mt-1 max-w-prose text-small text-ink-tertiary">
         {METRIC_DESCRIPTIONS[metric]}
       </p>
 
@@ -94,12 +93,12 @@ export function MetricTrendChart({
         <AreaChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -12 }}>
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={theme.brand} stopOpacity={0.22} />
-              <stop offset="100%" stopColor={theme.brand} stopOpacity={0.01} />
+              <stop offset="0%" stopColor={theme.accent} stopOpacity={0.14} />
+              <stop offset="100%" stopColor={theme.accent} stopOpacity={0} />
             </linearGradient>
           </defs>
 
-          <CartesianGrid stroke={theme.grid} strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke={theme.grid} strokeDasharray="2 4" vertical={false} />
           <XAxis
             dataKey="recordedAt"
             tickFormatter={formatChartTime}
@@ -117,20 +116,20 @@ export function MetricTrendChart({
             width={44}
           />
           <Tooltip
-            cursor={{ stroke: theme.border, strokeWidth: 1 }}
+            cursor={{ stroke: theme.line, strokeWidth: 1 }}
             content={<TrendTooltip metric={metric} k={k} />}
           />
 
           <Area
             type="monotone"
             dataKey="value"
-            stroke={theme.brand}
+            stroke={theme.accent}
             strokeWidth={2}
             fill={`url(#${gradientId})`}
             // Dots only appear once the series is short enough for them to be
             // distinguishable; on a long history they turn into a smear.
-            dot={data.length <= 24 ? { r: 2.5, fill: theme.brand, strokeWidth: 0 } : false}
-            activeDot={{ r: 4, fill: theme.brand, stroke: theme.surface, strokeWidth: 2 }}
+            dot={data.length <= 24 ? { r: 2.5, fill: theme.accent, strokeWidth: 0 } : false}
+            activeDot={{ r: 4, fill: theme.accent, stroke: theme.surface, strokeWidth: 2 }}
             isAnimationActive={data.length <= 60}
             animationDuration={420}
           />
@@ -141,7 +140,7 @@ export function MetricTrendChart({
               x={point.recordedAt}
               y={point.value}
               r={5}
-              fill={theme.critical}
+              fill={theme.danger}
               stroke={theme.surface}
               strokeWidth={2}
               // Clickable so a marked regression leads straight to its
@@ -169,36 +168,32 @@ function TrendTooltip({ active, payload, metric, k }: TooltipProps) {
   if (!point) return null;
 
   return (
-    <div className="min-w-[13rem] animate-scale-in rounded-lg border border-line bg-surface-raised p-3 shadow-popover">
-      <p className="text-xs font-medium text-content-muted">
+    <div className="min-w-[13rem] animate-scale-in rounded-md border border-line bg-surface-overlay p-3 shadow-lg">
+      <p className="text-label text-ink-tertiary">
         {formatDateTime(point.recordedAt)}
       </p>
-      <p className="tnum mt-1.5 text-lg font-semibold text-content">
+      <p className="tnum mt-1.5 text-heading text-ink">
         {formatMetric(point.value)}
-        <span className="ml-1.5 text-xs font-normal text-content-subtle">
+        <span className="ml-1.5 text-label font-normal text-ink-tertiary">
           {METRIC_LABELS[metric]}
           {metric === "mrr" ? "" : `@${k}`}
         </span>
       </p>
-      <dl className="mt-2 space-y-1 border-t border-line pt-2 text-xs">
+      <dl className="mt-2.5 space-y-1 border-t border-line-subtle pt-2.5 text-label">
         <div className="flex justify-between gap-4">
-          <dt className="text-content-subtle">Documents indexed</dt>
-          <dd className="tnum text-content-muted">{point.documentCount}</dd>
+          <dt className="text-ink-tertiary">Documents indexed</dt>
+          <dd className="tnum text-ink-secondary">{point.documentCount}</dd>
         </div>
         <div className="flex justify-between gap-4">
-          <dt className="text-content-subtle">Run</dt>
-          <dd className="font-mono text-2xs text-content-muted">
+          <dt className="text-ink-tertiary">Run</dt>
+          <dd className="font-mono text-[11px] text-ink-secondary">
             {shortId(point.runId)}
           </dd>
         </div>
       </dl>
       {point.verdict === "degraded" ? (
-        <p
-          className={cn(
-            "mt-2 rounded-md bg-critical-soft px-2 py-1 text-2xs font-medium text-critical",
-          )}
-        >
-          Regression detected — click the marker for the full assessment
+        <p className="mt-2.5 rounded-sm border border-danger-line bg-danger-subtle px-2 py-1 text-label text-danger-text">
+          Regression — click the marker for the assessment
         </p>
       ) : null}
     </div>

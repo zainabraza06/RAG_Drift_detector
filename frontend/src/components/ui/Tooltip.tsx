@@ -6,15 +6,16 @@ interface TooltipProps {
   content: ReactNode;
   children: ReactNode;
   className?: string;
+  side?: "top" | "bottom";
 }
 
 /**
- * A small hover/focus tooltip.
- *
- * Opens on focus as well as hover, and is wired up with aria-describedby, so
- * the explanation is reachable without a pointer.
+ * Opens on focus as well as hover and is wired with aria-describedby, so the
+ * explanation is reachable without a pointer. Several of these carry the only
+ * plain-English statement of what a statistic means, so they are not optional
+ * decoration.
  */
-export function Tooltip({ content, children, className }: TooltipProps) {
+export function Tooltip({ content, children, className, side = "top" }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const id = useId();
 
@@ -34,14 +35,32 @@ export function Tooltip({ content, children, className }: TooltipProps) {
           role="tooltip"
           id={id}
           className={cn(
-            "pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-xs",
-            "-translate-x-1/2 animate-scale-in rounded-lg border border-line",
-            "bg-surface-raised px-2.5 py-1.5 text-xs leading-relaxed text-content shadow-popover",
+            "pointer-events-none absolute left-1/2 z-50 w-max max-w-[19rem] -translate-x-1/2",
+            "animate-scale-in rounded-md border border-line bg-surface-overlay",
+            "px-2.5 py-1.5 text-small leading-5 text-ink-secondary shadow-lg",
+            side === "top" ? "bottom-full mb-2" : "top-full mt-2",
           )}
         >
           {content}
         </span>
       ) : null}
     </span>
+  );
+}
+
+/** Marks a term that carries a tooltip, without shouting. */
+export function Explained({
+  content,
+  children,
+}: {
+  content: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip content={content}>
+      <span className="cursor-help decoration-line-strong decoration-dotted underline-offset-4 [text-decoration-line:underline]">
+        {children}
+      </span>
+    </Tooltip>
   );
 }

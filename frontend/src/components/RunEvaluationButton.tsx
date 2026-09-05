@@ -70,7 +70,9 @@ export function RunEvaluationButton({
       }
     >
       <span className={compactOnMobile ? "hidden sm:inline" : undefined}>
+        <span className={compactOnMobile ? "hidden sm:inline" : undefined}>
         {mutation.isPending ? "Running…" : "Run evaluation"}
+      </span>
       </span>
     </Button>
   );

@@ -9,9 +9,9 @@ import {
 import { cn } from "@/lib/cn";
 
 const ICONS: Record<ToastTone, ReactNode> = {
-  success: <CheckCircle2 className="h-4 w-4 text-healthy" aria-hidden />,
-  error: <AlertCircle className="h-4 w-4 text-critical" aria-hidden />,
-  info: <Info className="h-4 w-4 text-brand" aria-hidden />,
+  success: <CheckCircle2 className="h-4 w-4 text-success" aria-hidden />,
+  error: <AlertCircle className="h-4 w-4 text-danger" aria-hidden />,
+  info: <Info className="h-4 w-4 text-accent" aria-hidden />,
 };
 
 const DISMISS_AFTER_MS = 6000;
@@ -62,15 +62,15 @@ function ToastItem({
   return (
     <div
       className={cn(
-        "pointer-events-auto flex animate-fade-up items-start gap-3 rounded-xl",
-        "border border-line bg-surface-raised p-3.5 shadow-popover",
+        "pointer-events-auto flex animate-fade-up items-start gap-3 rounded-lg",
+        "border border-line bg-surface-overlay px-4 py-3 shadow-lg",
       )}
     >
       <span className="mt-0.5 shrink-0">{ICONS[toast.tone]}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-content">{toast.title}</p>
+        <p className="text-subheading text-ink">{toast.title}</p>
         {toast.description ? (
-          <p className="mt-0.5 text-xs leading-relaxed text-content-muted">
+          <p className="mt-1 text-small leading-5 text-ink-secondary">
             {toast.description}
           </p>
         ) : null}
@@ -78,7 +78,7 @@ function ToastItem({
       <button
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss notification"
-        className="shrink-0 rounded p-0.5 text-content-subtle transition-colors hover:bg-surface-muted hover:text-content"
+        className="shrink-0 rounded-sm p-0.5 text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
       >
         <X className="h-3.5 w-3.5" aria-hidden />
       </button>

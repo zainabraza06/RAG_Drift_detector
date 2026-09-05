@@ -8,6 +8,7 @@ import { RunEvaluationButton } from "@/components/RunEvaluationButton";
 import { EmptyState } from "@/components/states/EmptyState";
 import { ErrorState } from "@/components/states/ErrorState";
 import { ListSkeleton } from "@/components/states/LoadingState";
+import { Code } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/lib/cn";
 import { VERDICT_META } from "@/lib/display";
@@ -51,10 +52,8 @@ export function DriftEventsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-content">
-            Drift events
-          </h1>
-          <p className="mt-1 text-sm text-content-muted">
+          <h1 className="text-title text-ink">Drift events</h1>
+          <p className="mt-1.5 max-w-prose text-body text-ink-secondary">
             Every assessment, with the statistical reasoning that produced it.
           </p>
         </div>
@@ -62,7 +61,7 @@ export function DriftEventsPage() {
         <div
           role="tablist"
           aria-label="Filter by verdict"
-          className="flex flex-wrap gap-0.5 rounded-lg border border-line bg-surface p-0.5"
+          className="flex flex-wrap gap-0.5 rounded-md border border-line bg-inset p-0.5"
         >
           {FILTERS.map((option) => (
             <button
@@ -74,10 +73,10 @@ export function DriftEventsPage() {
                 if (focusedRun) setParams({}, { replace: true });
               }}
               className={cn(
-                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors duration-150",
+                "rounded px-2.5 py-1 text-label transition-colors duration-fast ease-out",
                 filter === option.value
-                  ? "bg-surface-muted text-content"
-                  : "text-content-subtle hover:text-content-muted",
+                  ? "bg-surface text-ink shadow-xs"
+                  : "text-ink-tertiary hover:text-ink-secondary",
               )}
             >
               {option.label}
@@ -145,52 +144,43 @@ function DriftEventRow({
   onToggle: () => void;
 }) {
   const meta = VERDICT_META[event.verdict];
-  const Icon = meta.icon;
 
   return (
     <li
       className={cn(
-        "overflow-hidden rounded-xl border bg-surface shadow-card transition-[border-color,box-shadow] duration-200",
-        highlighted ? "border-brand/50 shadow-raised" : "border-line hover:border-line-strong",
+        "overflow-hidden rounded-lg border bg-surface shadow-xs transition-colors duration-fast",
+        highlighted ? "border-accent-line" : "border-line hover:border-line-strong",
       )}
     >
       <button
         onClick={onToggle}
         aria-expanded={expanded}
-        className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors duration-150 hover:bg-surface-muted/50"
+        className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors duration-fast ease-out hover:bg-surface-hover"
       >
         <span
-          className={cn(
-            "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ring-1 ring-inset",
-            meta.tone === "critical" && "bg-critical-soft text-critical ring-critical/25",
-            meta.tone === "healthy" && "bg-healthy-soft text-healthy ring-healthy/25",
-            meta.tone === "neutral" && "bg-unknown-soft text-content-muted ring-unknown/20",
-          )}
-        >
-          <Icon className="h-4 w-4" aria-hidden />
-        </span>
+          className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", meta.rail)}
+          aria-hidden
+        />
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="text-sm font-semibold text-content">{meta.label}</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-subheading text-ink">{meta.label}</span>
             <span
-              className="text-xs text-content-subtle"
+              className="text-small text-ink-tertiary"
               title={formatDateTime(event.detected_at)}
             >
               {formatRelative(event.detected_at)}
             </span>
-            <span className="font-mono text-2xs text-content-subtle">
-              {shortId(event.run_id)}
-            </span>
+            <Code>{shortId(event.run_id)}</Code>
           </div>
-          <p className="mt-1 text-sm leading-relaxed text-content-muted">
+          <p className="mt-1.5 max-w-prose text-body text-ink-secondary">
             {event.summary}
           </p>
         </div>
 
         <ChevronDown
           className={cn(
-            "mt-1 h-4 w-4 shrink-0 text-content-subtle transition-transform duration-200",
+            "mt-1 h-4 w-4 shrink-0 text-ink-tertiary transition-transform duration-fast",
             expanded && "rotate-180",
           )}
           aria-hidden
@@ -198,17 +188,17 @@ function DriftEventRow({
       </button>
 
       {expanded ? (
-        <div className="animate-fade-in space-y-6 border-t border-line bg-surface-muted/30 px-5 py-5">
+        <div className="animate-fade-in space-y-8 border-t border-line-subtle px-5 py-6">
           <section>
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-content-muted">
+            <h3 className="mb-4 text-micro uppercase text-ink-tertiary">
               Statistical assessment
             </h3>
-            <DriftAssessmentCard assessment={event} />
+            <DriftAssessmentCard assessment={event} hideSummary />
           </section>
 
           {event.diagnostics ? (
             <section>
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-content-muted">
+              <h3 className="mb-4 text-micro uppercase text-ink-tertiary">
                 Root-cause diagnostics
               </h3>
               <DiagnosticsPanel report={event.diagnostics} />

@@ -51,16 +51,16 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div
         role="alert"
-        className="mx-auto flex max-w-lg animate-fade-in flex-col items-center rounded-xl border border-line bg-surface px-6 py-14 text-center shadow-card"
+        className="mx-auto flex max-w-lg animate-fade-in flex-col items-center rounded-lg border border-line bg-surface px-6 py-14 text-center shadow-xs"
       >
-        <span className="mb-4 grid h-12 w-12 place-items-center rounded-xl border border-critical/25 bg-critical-soft">
-          <TriangleAlert className="h-5 w-5 text-critical" aria-hidden />
+        <span className="mb-4 grid h-9 w-9 place-items-center rounded-lg border border-danger-line bg-danger-subtle">
+          <TriangleAlert className="h-4 w-4 text-danger-text" aria-hidden />
         </span>
-        <h2 className="text-base font-semibold text-content">
+        <h2 className="text-heading text-ink">
           {this.props.title ??
             (isStaleChunk ? "This page needs a refresh" : "Something broke here")}
         </h2>
-        <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-content-muted">
+        <p className="mt-1.5 max-w-[42ch] text-body leading-6 text-ink-secondary">
           {this.props.description ??
             (isStaleChunk
               ? "The application was updated while this tab was open, so part of it could not be loaded. Reloading will pick up the new version."
@@ -79,10 +79,10 @@ export class ErrorBoundary extends Component<Props, State> {
           ) : null}
         </div>
         <details className="mt-5 w-full text-left">
-          <summary className="cursor-pointer text-2xs text-content-subtle hover:text-content-muted">
+          <summary className="cursor-pointer text-label text-ink-tertiary hover:text-ink-secondary">
             Technical detail
           </summary>
-          <pre className="mt-2 overflow-x-auto rounded-lg bg-surface-muted p-3 font-mono text-2xs text-content-muted">
+          <pre className="mt-2 overflow-x-auto rounded-md border border-line-subtle bg-inset p-3 font-mono text-[11px] text-ink-secondary">
             {error.message}
           </pre>
         </details>

@@ -1,19 +1,12 @@
-import {
-  Activity,
-  LayoutDashboard,
-  ListChecks,
-  Menu,
-  Radar,
-  TrendingUp,
-  X,
-} from "lucide-react";
+import { Activity, LayoutGrid, ListChecks, Menu, Radar, TrendingUp, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
-import { RunEvaluationButton } from "@/components/RunEvaluationButton";
 import { HealthDot } from "@/components/HealthBadge";
+import { RunEvaluationButton } from "@/components/RunEvaluationButton";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { IconButton } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { useDashboard } from "@/lib/queries";
 
@@ -25,53 +18,50 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/", label: "Overview", icon: LayoutGrid, end: true },
   { to: "/trends", label: "Trends", icon: TrendingUp },
   { to: "/drift", label: "Drift events", icon: Radar },
   { to: "/golden-set", label: "Golden set", icon: ListChecks },
 ];
 
+const SIDEBAR_WIDTH = "w-[248px]";
+
 export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
 
-  // Navigating on mobile should dismiss the drawer; leaving it open hides the
+  // Navigating on mobile dismisses the drawer; leaving it open would hide the
   // page the user just asked for.
   useEffect(() => setMobileOpen(false), [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-canvas">
-      <MobileOverlay open={mobileOpen} onClose={() => setMobileOpen(false)} />
+    <div className="min-h-screen bg-app">
+      <div
+        onClick={() => setMobileOpen(false)}
+        aria-hidden
+        className={cn(
+          "fixed inset-0 z-30 bg-black/40 backdrop-blur-[2px] transition-opacity duration-slow lg:hidden",
+          mobileOpen ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+      />
 
       <Sidebar
         className={cn(
-          "fixed inset-y-0 left-0 z-40 w-64 transition-transform duration-300 ease-out lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 transition-transform duration-slow ease-out lg:translate-x-0",
+          SIDEBAR_WIDTH,
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
         onClose={() => setMobileOpen(false)}
         showClose={mobileOpen}
       />
 
-      <div className="lg:pl-64">
+      <div className="lg:pl-[248px]">
         <TopBar onOpenMenu={() => setMobileOpen(true)} />
-        <main className="mx-auto w-full max-w-[88rem] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main className="mx-auto w-full max-w-content px-5 py-6 sm:px-8 lg:px-10 lg:py-8">
           <Outlet />
         </main>
       </div>
     </div>
-  );
-}
-
-function MobileOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
-  return (
-    <div
-      onClick={onClose}
-      aria-hidden
-      className={cn(
-        "fixed inset-0 z-30 bg-slate-950/50 backdrop-blur-sm transition-opacity duration-300 lg:hidden",
-        open ? "opacity-100" : "pointer-events-none opacity-0",
-      )}
-    />
   );
 }
 
@@ -87,38 +77,26 @@ function Sidebar({
   const { data } = useDashboard();
 
   return (
-    <aside
-      className={cn(
-        "flex flex-col border-r border-line bg-surface",
-        className,
-      )}
-    >
-      <div className="flex h-14 items-center justify-between gap-2 border-b border-line px-4">
+    <aside className={cn("flex flex-col border-r border-line bg-surface", className)}>
+      <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-5">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand">
-            <Activity className="h-4 w-4 text-brand-fg" aria-hidden />
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-accent">
+            <Activity className="h-3.5 w-3.5 text-accent-fg" aria-hidden />
           </span>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold leading-tight text-content">
-              Drift Detector
-            </p>
-            <p className="truncate text-2xs leading-tight text-content-subtle">
-              Retrieval quality
-            </p>
-          </div>
+          <span className="truncate text-subheading text-ink">Drift Detector</span>
         </div>
         {showClose ? (
-          <button
-            onClick={onClose}
+          <IconButton
             aria-label="Close navigation"
-            className="rounded-md p-1 text-content-muted hover:bg-surface-muted lg:hidden"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </button>
+            size="sm"
+            className="lg:hidden"
+            icon={<X className="h-4 w-4" aria-hidden />}
+            onClick={onClose}
+          />
         ) : null}
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
         {NAV_ITEMS.map((item) => (
           <NavLink
             key={item.to}
@@ -126,11 +104,11 @@ function Sidebar({
             end={item.end}
             className={({ isActive }) =>
               cn(
-                "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium",
-                "transition-colors duration-150",
+                "flex items-center gap-2.5 rounded-md px-2.5 py-1.5",
+                "text-small font-medium transition-colors duration-fast ease-out",
                 isActive
-                  ? "bg-brand-soft text-brand"
-                  : "text-content-muted hover:bg-surface-muted hover:text-content",
+                  ? "bg-inset text-ink"
+                  : "text-ink-secondary hover:bg-surface-hover hover:text-ink",
               )
             }
           >
@@ -138,14 +116,14 @@ function Sidebar({
               <>
                 <item.icon
                   className={cn(
-                    "h-4 w-4 shrink-0 transition-transform duration-150",
-                    !isActive && "group-hover:scale-110",
+                    "h-4 w-4 shrink-0",
+                    isActive ? "text-accent" : "text-ink-tertiary",
                   )}
                   aria-hidden
                 />
                 {item.label}
                 {item.to === "/drift" && data?.open_regressions ? (
-                  <span className="tnum ml-auto rounded-full bg-critical px-1.5 py-0.5 text-2xs font-semibold text-white">
+                  <span className="tnum ml-auto rounded-sm bg-danger-subtle px-1.5 py-0.5 text-micro text-danger-text">
                     {data.open_regressions}
                   </span>
                 ) : null}
@@ -155,9 +133,7 @@ function Sidebar({
         ))}
       </nav>
 
-      <div className="border-t border-line p-3">
-        <ActiveGoldenSetSummary />
-      </div>
+      <ActiveGoldenSetSummary />
     </aside>
   );
 }
@@ -166,25 +142,21 @@ function ActiveGoldenSetSummary() {
   const { data } = useDashboard();
   const active = data?.active_golden_set;
 
-  if (!active) {
-    return (
-      <p className="px-2 text-2xs leading-relaxed text-content-subtle">
-        No active golden set.
-      </p>
-    );
-  }
-
   return (
-    <div className="rounded-lg bg-surface-muted px-3 py-2.5">
-      <p className="text-2xs font-medium uppercase tracking-wide text-content-subtle">
-        Active golden set
-      </p>
-      <p className="mt-1 truncate text-xs font-medium text-content">
-        {active.golden_set.name}
-      </p>
-      <p className="mt-0.5 text-2xs text-content-subtle">
-        v{active.golden_set.version} · {active.golden_set.queries.length} queries
-      </p>
+    <div className="border-t border-line-subtle px-5 py-4">
+      <p className="text-micro uppercase text-ink-tertiary">Active golden set</p>
+      {active ? (
+        <>
+          <p className="mt-1.5 truncate text-small font-medium text-ink">
+            {active.golden_set.name}
+          </p>
+          <p className="tnum mt-0.5 text-label text-ink-tertiary">
+            v{active.golden_set.version} · {active.golden_set.queries.length} queries
+          </p>
+        </>
+      ) : (
+        <p className="mt-1.5 text-label text-ink-tertiary">None selected</p>
+      )}
     </div>
   );
 }
@@ -193,22 +165,22 @@ function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const { data } = useDashboard();
 
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-md">
-      <div className="mx-auto flex h-14 w-full max-w-[88rem] items-center gap-3 px-4 sm:px-6 lg:px-8">
-        <button
-          onClick={onOpenMenu}
+    <header className="sticky top-0 z-20 border-b border-line bg-app/80 backdrop-blur-md">
+      <div className="mx-auto flex h-14 w-full max-w-content items-center gap-3 px-5 sm:px-8 lg:px-10">
+        <IconButton
           aria-label="Open navigation"
-          className="rounded-md p-1.5 text-content-muted transition-colors hover:bg-surface-muted hover:text-content lg:hidden"
-        >
-          <Menu className="h-5 w-5" aria-hidden />
-        </button>
+          size="sm"
+          className="lg:hidden"
+          icon={<Menu className="h-4 w-4" aria-hidden />}
+          onClick={onOpenMenu}
+        />
 
         {data ? (
           <div className="flex min-w-0 items-center gap-2">
             <HealthDot status={data.health} />
-            <span className="truncate text-sm text-content-muted">
+            <span className="tnum truncate text-small text-ink-secondary">
               {data.has_runs
-                ? `${data.total_runs} run${data.total_runs === 1 ? "" : "s"} recorded`
+                ? `${data.total_runs} run${data.total_runs === 1 ? "" : "s"}`
                 : "No evaluations yet"}
             </span>
           </div>
@@ -216,7 +188,7 @@ function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
-          <RunEvaluationButton size="sm" compactOnMobile />
+          <RunEvaluationButton size="sm" variant="secondary" compactOnMobile />
         </div>
       </div>
     </header>
