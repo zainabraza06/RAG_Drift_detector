@@ -113,7 +113,7 @@ describe("drift assessment", () => {
     expect(screen.getByText(/decided on NDCG@5/i)).toBeInTheDocument();
   });
 
-  it("distinguishes significant from material", () => {
+  it("marks a change that is real but too small to matter", () => {
     renderWithProviders(
       <DriftAssessmentCard
         assessment={assessment({
@@ -123,8 +123,34 @@ describe("drift assessment", () => {
         })}
       />,
     );
-    // A change can be real and irrelevant; the UI must not merge the two.
-    expect(screen.getByText(/below threshold/i)).toBeInTheDocument();
+    // A change can be statistically real and operationally irrelevant; the UI
+    // must not merge the two into one badge.
+    expect(screen.getByText(/sub-threshold/i)).toBeInTheDocument();
+  });
+
+  it("marks a change that matters but is not distinguishable from noise", () => {
+    renderWithProviders(
+      <DriftAssessmentCard
+        assessment={assessment({
+          comparisons: [
+            comparison({ significant: false, material: true, difference: -0.12 }),
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText(/n\.s\./i)).toBeInTheDocument();
+  });
+
+  it("says nothing extra when significance and materiality agree", () => {
+    renderWithProviders(
+      <DriftAssessmentCard
+        assessment={assessment({
+          comparisons: [comparison({ significant: true, material: true })],
+        })}
+      />,
+    );
+    expect(screen.queryByText(/sub-threshold/i)).toBeNull();
+    expect(screen.queryByText(/n\.s\./i)).toBeNull();
   });
 
   it("explains why a small number of discordant pairs cannot reach significance", () => {

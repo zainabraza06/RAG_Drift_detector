@@ -25,6 +25,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from app.connectors.base import VectorStoreConnector
 from app.core.config import Settings, get_settings
 from app.core.factory import build_scoring_engine, build_vector_store
 from app.core.logging import configure_logging
@@ -35,6 +36,7 @@ from app.repositories.drift import DriftRepository
 from app.repositories.golden_sets import GoldenSetRepository
 from app.repositories.runs import RunRepository
 from app.services.bootstrap import bootstrap
+from app.services.corpus import load_documents, seed_documents
 from app.services.drift_service import DriftService
 from app.services.golden_set_service import GoldenSetService
 
@@ -74,6 +76,21 @@ def _clear_history(settings: Settings) -> None:
     logger.info("cleared existing run history")
 
 
+def _restore_corpus(settings: Settings, store: VectorStoreConnector) -> int:
+    """Put every demo document back before seeding a fresh history.
+
+    Clearing the run history is not enough on its own. A previous invocation
+    leaves six documents deleted, and the index outlives the database — so
+    without this the script would score every run against an already-broken
+    index, report "removed 6 documents" and produce a history containing no
+    regression at all. Restoring first makes the run reproducible from any
+    starting state.
+    """
+    documents = load_documents(settings.demo_documents_path)
+    seed_documents(store, documents)
+    return store.count_documents()
+
+
 def _restamp(result: EvaluationResult, moment: datetime) -> EvaluationResult:
     """Return the result with simulated start/finish timestamps.
 
@@ -94,6 +111,8 @@ def seed(settings: Settings, timeline: Timeline, *, reset: bool) -> int:
         _clear_history(settings)
 
     with build_vector_store(settings) as store:
+        if reset:
+            logger.info("restored corpus to %d documents", _restore_corpus(settings, store))
         engine = build_scoring_engine(settings, connector=store)
 
         with session_scope(settings) as session:
@@ -149,6 +168,17 @@ def seed(settings: Settings, timeline: Timeline, *, reset: bool) -> int:
     print(f"  verdicts: {summary}")
     print(f"  removed:  {len(BROKEN_DOCUMENTS)} documents before run "
           f"{timeline.break_after + 1}")
+
+    if not summary["degraded"]:
+        # Producing a regression is the entire point of the script, so a run
+        # that produced none is a failure rather than a quiet success.
+        print(
+            "\nWARNING: no run was judged a regression, so this history is not "
+            "the one the script set out to build. Re-run with --reset, which "
+            "restores the corpus before generating."
+        )
+        return 1
+
     print("\nRestore the index with:  python -m app.cli seed")
     return 0
 
