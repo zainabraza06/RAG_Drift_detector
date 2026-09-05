@@ -236,6 +236,59 @@ Clients branch on `code`; `message` wording is free to change.
 
 ---
 
+## Running it
+
+```bash
+docker compose up --build
+open http://localhost:8080
+```
+
+That is the whole quickstart. On a fresh volume the backend migrates the
+schema, indexes the bundled demo corpus into Chroma and imports the demo
+golden set, so the dashboard has something real to show on first load. Every
+step is idempotent, so restarts are safe.
+
+Three services: **nginx** serving the built SPA and proxying `/api`,
+**FastAPI** holding the run history in SQLite, and **Chroma** as the vector
+store. The API is not published — nginx is the only thing that needs to reach
+it, and exposing it would give the UI two different origins and drag CORS into
+the production path for no reason.
+
+### Why Chroma runs as a server
+
+This is a correctness requirement rather than a deployment preference, and it
+is the single most important thing in the compose file.
+
+`chromadb`'s `PersistentClient` caches a collection's vector segment in memory
+for the life of the process and does not observe another process's writes.
+Reopening the client does not help — the underlying `System` is cached per
+path. A drift detector reads an index that some *other* pipeline writes, so an
+embedded client would keep scoring the index as it looked when the API booted
+and would **never notice the change it exists to detect**. A server is the
+single owner of the index; every writer and reader goes through it.
+
+### Giving the demo a history worth looking at
+
+One run is not a trend, and drift detection needs a baseline:
+
+```bash
+docker compose exec backend python -m scripts.seed_demo_history --reset
+```
+
+This runs *real* evaluations against the *real* index and deliberately deletes
+six expected documents part way through, producing a genuine regression with
+genuine intervals and diagnostics. The only thing simulated is *when* the runs
+happened — they are stamped across the past twelve days so the trend charts
+have a readable axis instead of a dozen points inside one minute.
+
+### Configuration
+
+Copy `.env.example` to `.env` to override defaults. Set
+`DRIFT_BOOTSTRAP_DEMO=false` to start empty against your own corpus, which is
+what a real deployment wants.
+
+---
+
 ## Dashboard
 
 ```bash
