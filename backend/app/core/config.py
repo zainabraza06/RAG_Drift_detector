@@ -90,6 +90,9 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:8080",
     )
+    # For a frontend hosted on another origin whose URL changes per deploy,
+    # e.g. Vercel previews: ``https://my-app(-[a-z0-9-]+)?\.vercel\.app``.
+    cors_origin_regex: str | None = None
 
     @field_validator("eval_k_values", "cors_origins", mode="before")
     @classmethod

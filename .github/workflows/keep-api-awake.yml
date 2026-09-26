@@ -1,0 +1,29 @@
+# Keeps the free Render instance from sleeping, so no visitor waits for a cold
+# start. The dashboard's own warm-up only helps once someone has opened it.
+#
+# Set the repository variable API_HEALTH_URL (Settings > Secrets and variables
+# > Actions > Variables) to https://<service>.onrender.com/api/health. Unset,
+# this does nothing.
+#
+# GitHub may delay scheduled runs at busy times, so an occasional sleep can
+# still slip through; an external pinger such as cron-job.org every 5 minutes
+# is tighter. One always-on free instance uses ~744 of the 750 free hours a
+# month, so this suits a workspace with no other free web service.
+
+name: keep API awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    if: ${{ vars.API_HEALTH_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping the health endpoint
+        run: curl --fail --silent --show-error --max-time 180 --retry 3 --retry-delay 10 "$URL"
+        env:
+          URL: ${{ vars.API_HEALTH_URL }}

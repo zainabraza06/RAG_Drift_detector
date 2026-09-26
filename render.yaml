@@ -1,0 +1,43 @@
+# Render Blueprint for the API: New > Blueprint, point it at this repository.
+# The dashboard is deployed separately on Vercel (frontend/vercel.json).
+#
+# Free instances have no persistent disk and sleep after 15 idle minutes, so
+# every wake is a fresh install: the demo corpus and golden set are re-indexed
+# and, with DRIFT_SEED_DEMO_HISTORY, a realistic run history (including a
+# detected regression) is regenerated. The dashboard pings /api/health on load
+# to start that wake early, and .github/workflows/keep-api-awake.yml can keep
+# the instance from sleeping at all.
+
+services:
+  - type: web
+    name: rag-drift-detector-api
+    runtime: docker
+    plan: free
+    branch: main
+    autoDeploy: true
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      # The Vercel production URL, e.g. https://rag-drift-detector.vercel.app
+      # (comma-separate several). Asked for when the Blueprint is applied.
+      - key: DRIFT_CORS_ORIGINS
+        sync: false
+      # Optional: also allow Vercel preview deploys, e.g.
+      # https://rag-drift-detector(-[a-z0-9-]+)?\.vercel\.app
+      - key: DRIFT_CORS_ORIGIN_REGEX
+        sync: false
+      - key: DRIFT_CHROMA_MODE
+        value: persistent
+      - key: DRIFT_LOG_LEVEL
+        value: INFO
+      - key: DRIFT_CHROMA_COLLECTION
+        value: drift_demo
+      - key: DRIFT_EVAL_K_VALUES
+        value: 1,3,5,10
+      - key: DRIFT_EVAL_PRIMARY_K
+        value: "5"
+      - key: DRIFT_BOOTSTRAP_DEMO
+        value: "true"
+      - key: DRIFT_SEED_DEMO_HISTORY
+        value: "true"

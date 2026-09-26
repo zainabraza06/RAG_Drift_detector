@@ -145,6 +145,41 @@ deliberate regression part way through:
 docker compose exec backend python -m scripts.seed_demo_history --reset
 ```
 
+### Hosted: Vercel (dashboard) + Render (API)
+
+**API on Render.** In Render, choose **New → Blueprint** and point it at this
+repository. `render.yaml` defines one free web service built from
+`backend/Dockerfile`. When the Blueprint is applied, Render asks for:
+
+- `DRIFT_CORS_ORIGINS`: the Vercel URL, for example
+  `https://rag-drift-detector.vercel.app`. This one is required.
+- `DRIFT_CORS_ORIGIN_REGEX`: optional; set it to also allow Vercel preview
+  deploys.
+
+**Dashboard on Vercel.** Import the repository and set these:
+
+- **Root Directory:** `frontend`
+- **Environment variable:** `VITE_API_URL=https://<service>.onrender.com/api`
+
+`frontend/vercel.json` handles the SPA routing and asset caching.
+
+**Cold starts.** A free Render instance has no disk and sleeps after 15 idle
+minutes, and every wake is a fresh install. The demo is rebuilt on each boot,
+and `DRIFT_SEED_DEMO_HISTORY=true` also regenerates the run history. Two
+things keep the wait away from users:
+
+- **The dashboard wakes the API itself.** It pings `/api/health` as soon as it
+  loads. If the API is asleep, it shows a "Waking the server…" notice and holds
+  **Run evaluation** until the API answers. Once the API is up, anything that
+  failed in the meantime reloads by itself. While a tab stays open, the
+  dashboard pings every 10 minutes so the API doesn't fall asleep mid-session.
+- **A scheduled ping keeps it from sleeping at all.** Set the repository
+  variable `API_HEALTH_URL` to `https://<service>.onrender.com/api/health`, and
+  `.github/workflows/keep-api-awake.yml` pings it every 10 minutes. GitHub can
+  delay scheduled runs, so for tighter coverage use an external pinger such as
+  cron-job.org every 5 minutes. One always-on instance uses about 744 of
+  Render's 750 free hours a month.
+
 ### From source
 
 Requires Python 3.11+ and Node 20+.

@@ -52,4 +52,10 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
 
 # Migrations and the demo bootstrap run inside the application lifespan, so
 # there is no separate init step to forget.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+#
+# PORT is set by hosts like Render; compose leaves it unset. On a host with an
+# ephemeral disk, DRIFT_SEED_DEMO_HISTORY=true rebuilds the demo history on
+# every boot. It runs to completion before uvicorn starts, so an embedded
+# index never has two live processes on it.
+ENV DRIFT_SEED_DEMO_HISTORY=false
+CMD ["sh", "-c", "if [ \"$DRIFT_SEED_DEMO_HISTORY\" = true ]; then python -m scripts.seed_demo_history --reset; fi; exec uvicorn main:app --host 0.0.0.0 --port \"${PORT:-8000}\" --proxy-headers --forwarded-allow-ips='*'"]

@@ -8,7 +8,9 @@ way the shipped compose file and .env.example set it.
 from __future__ import annotations
 
 import pytest
+from fastapi.testclient import TestClient
 
+from app.api import create_app
 from app.core.config import Settings
 
 
@@ -45,6 +47,30 @@ class TestCommaSeparatedEnvVars:
             "http://localhost:3000",
             "http://localhost:5173",
         )
+
+    def test_cors_origin_regex_matches_per_deploy_urls(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(
+            "DRIFT_CORS_ORIGIN_REGEX", r"https://drift(-[a-z0-9-]+)?\.vercel\.app"
+        )
+        app = create_app(Settings())
+        client = TestClient(app)
+        preview = "https://drift-git-main-zainab.vercel.app"
+        response = client.options(
+            "/api/health",
+            headers={"Origin": preview, "Access-Control-Request-Method": "GET"},
+        )
+        assert response.headers["access-control-allow-origin"] == preview
+
+        response = client.options(
+            "/api/health",
+            headers={
+                "Origin": "https://evil.vercel.app",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert "access-control-allow-origin" not in response.headers
 
     def test_defaults_still_apply_with_no_environment(
         self, monkeypatch: pytest.MonkeyPatch

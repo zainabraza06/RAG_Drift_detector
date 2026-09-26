@@ -66,6 +66,15 @@ class TestBootstrapAndHealth:
             "message": None,
         }
 
+    def test_health_answers_a_cross_origin_frontend(
+        self, api_client: TestClient
+    ) -> None:
+        # A frontend on another host (Vercel) pings this to wake the API, and
+        # can only read the answer if it carries CORS headers.
+        origin = "http://localhost:5173"
+        response = api_client.get(f"{API}/health", headers={"Origin": origin})
+        assert response.headers["access-control-allow-origin"] == origin
+
     def test_openapi_schema_is_served(self, api_client: TestClient) -> None:
         schema = api_client.get("/openapi.json").json()
         assert f"{API}/runs" in schema["paths"]

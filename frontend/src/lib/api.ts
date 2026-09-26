@@ -109,6 +109,20 @@ export const api = {
   // -- System ----------------------------------------------------------
   dashboard: () => request<DashboardSummary>("/dashboard"),
   systemInfo: () => request<SystemInfo>("/system/info"),
+  /**
+   * Resolves once the API answers at all. A 503 still counts: it is the API
+   * reporting on its dependencies, so the process is up. Only a network
+   * failure means "not awake", and cross-origin that includes the host's own
+   * holding page, which carries no CORS headers for us to read.
+   */
+  ping: () =>
+    request<unknown>("/health").then(
+      () => true,
+      (error: unknown) => {
+        if (error instanceof ApiError && error.status > 0) return true;
+        throw error;
+      },
+    ),
 
   // -- Runs ------------------------------------------------------------
   listRuns: (params: { limit?: number; offset?: number } = {}) =>

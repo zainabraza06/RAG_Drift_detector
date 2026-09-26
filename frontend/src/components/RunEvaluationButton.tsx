@@ -5,6 +5,7 @@ import { useToast } from "@/components/ui/toast-context";
 import { ApiError } from "@/lib/api";
 import { formatMetric } from "@/lib/format";
 import { useRunEvaluation } from "@/lib/queries";
+import { useBackendState } from "@/lib/warmup";
 
 interface RunEvaluationButtonProps {
   size?: "sm" | "md" | "lg";
@@ -33,6 +34,11 @@ export function RunEvaluationButton({
 }: RunEvaluationButtonProps) {
   const { push } = useToast();
   const mutation = useRunEvaluation();
+  // Held until the API has answered, so a click on a sleeping backend is not
+  // a spinner that ends in a timeout. An unreachable API stays clickable, so
+  // the user gets the real error rather than a button that never enables.
+  const backend = useBackendState();
+  const waiting = backend === "checking" || backend === "waking";
 
   return (
     <Button
@@ -41,6 +47,8 @@ export function RunEvaluationButton({
       className={className}
       aria-label="Run evaluation"
       loading={mutation.isPending}
+      disabled={waiting}
+      title={backend === "waking" ? "Waiting for the server to start" : undefined}
       icon={<Play className="h-3.5 w-3.5" aria-hidden />}
       onClick={() =>
         mutation.mutate(undefined, {
@@ -71,7 +79,11 @@ export function RunEvaluationButton({
     >
       <span className={compactOnMobile ? "hidden sm:inline" : undefined}>
         <span className={compactOnMobile ? "hidden sm:inline" : undefined}>
-        {mutation.isPending ? "Running…" : "Run evaluation"}
+        {mutation.isPending
+          ? "Running…"
+          : backend === "waking"
+            ? "Waking server…"
+            : "Run evaluation"}
       </span>
       </span>
     </Button>

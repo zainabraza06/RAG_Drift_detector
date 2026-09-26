@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
+import { BackendWarmup } from "@/components/BackendWarmup";
 import { HealthDot } from "@/components/HealthBadge";
 import { RunEvaluationButton } from "@/components/RunEvaluationButton";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -58,6 +59,7 @@ export function AppShell() {
       <div className="lg:pl-[248px]">
         <TopBar onOpenMenu={() => setMobileOpen(true)} />
         <main className="mx-auto w-full max-w-content px-5 py-6 sm:px-8 lg:px-10 lg:py-8">
+          <BackendWarmup />
           <Outlet />
         </main>
       </div>
