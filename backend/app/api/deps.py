@@ -20,6 +20,8 @@ from app.db.session import get_session_factory
 from app.repositories.drift import DriftRepository
 from app.repositories.golden_sets import GoldenSetRepository
 from app.repositories.runs import RunRepository
+from app.services.corpus import load_documents
+from app.services.demo_scenarios import DemoScenarioService
 from app.services.drift_service import DriftService
 from app.services.golden_set_service import GoldenSetService
 from app.services.run_service import RunService
@@ -110,3 +112,16 @@ def get_run_service(
 
 
 RunServiceDep = Annotated[RunService, Depends(get_run_service)]
+
+
+def get_demo_service(
+    settings: SettingsDep, vector_store: VectorStoreDep
+) -> DemoScenarioService:
+    return DemoScenarioService(
+        vector_store,
+        load_documents(settings.demo_documents_path),
+        enabled=settings.demo_controls,
+    )
+
+
+DemoServiceDep = Annotated[DemoScenarioService, Depends(get_demo_service)]

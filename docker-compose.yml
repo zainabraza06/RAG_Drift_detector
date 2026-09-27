@@ -58,6 +58,9 @@ services:
       # Set false to start with an empty index and no golden set, which is
       # what a real deployment against its own corpus wants.
       DRIFT_BOOTSTRAP_DEMO: ${DRIFT_BOOTSTRAP_DEMO:-true}
+      # The dashboard's "simulate drift" panel. It rewrites the index, so turn
+      # it off along with the demo before pointing at a real corpus.
+      DRIFT_DEMO_CONTROLS: ${DRIFT_DEMO_CONTROLS:-true}
     volumes:
       - drift-data:/app/data
     # Not published by default: nginx is the only thing that needs to reach

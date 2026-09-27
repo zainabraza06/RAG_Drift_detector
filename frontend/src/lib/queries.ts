@@ -16,6 +16,7 @@ import {
 import { api } from "./api";
 import type {
   DashboardSummary,
+  DemoScenario,
   DiagnosticReport,
   DriftAssessment,
   DriftVerdict,
@@ -41,6 +42,7 @@ export const keys = {
   driftEvents: (verdict?: DriftVerdict) => ["drift-events", verdict ?? "all"] as const,
   goldenSets: ["golden-sets"] as const,
   goldenSet: (id: number) => ["golden-sets", id] as const,
+  demo: ["demo"] as const,
 };
 
 export function useDashboard(): UseQueryResult<DashboardSummary> {
@@ -199,6 +201,31 @@ export function useDeleteGoldenSet() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.goldenSets });
       invalidate();
+    },
+  });
+}
+
+// ----------------------------------------------------------------------
+// Demo: simulated drift
+// ----------------------------------------------------------------------
+
+export function useDemoState() {
+  return useQuery({ queryKey: keys.demo, queryFn: api.demoState });
+}
+
+/**
+ * Changing the index changes what the header and system panel report, but
+ * not any run: history only moves when the user runs an evaluation, which is
+ * the whole point of the exercise.
+ */
+export function useApplyScenario() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (scenario: DemoScenario) => api.applyScenario(scenario),
+    onSuccess: (state) => {
+      client.setQueryData(keys.demo, state);
+      void client.invalidateQueries({ queryKey: keys.dashboard });
+      void client.invalidateQueries({ queryKey: keys.system });
     },
   });
 }

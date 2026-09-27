@@ -10,6 +10,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { DemoPanel } from "@/components/DemoPanel";
 import { LeadingHypothesis } from "@/components/DiagnosticsPanel";
 import { VerdictBadge } from "@/components/DriftAssessmentCard";
 import { HealthBadge } from "@/components/HealthBadge";
@@ -46,6 +47,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-8">
       <StatusPanel summary={data} />
+      <DemoPanel />
 
       <section>
         <SectionHeading>Latest metrics · k={data.latest_run?.primary_k}</SectionHeading>

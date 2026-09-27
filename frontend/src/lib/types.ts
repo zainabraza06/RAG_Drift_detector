@@ -308,3 +308,19 @@ export interface SystemInfo {
   golden_set_count: number;
   active_golden_set: GoldenSetRef | null;
 }
+
+// ----------------------------------------------------------------------
+// Demo: simulated drift
+// ----------------------------------------------------------------------
+
+export type DemoScenario = "delete-documents" | "rechunk" | "restore";
+
+/** The demo index relative to the clean corpus. */
+export interface DemoIndexState {
+  enabled: boolean;
+  document_count: number;
+  corpus_size: number;
+  missing_documents: number;
+  fragment_documents: number;
+  healthy: boolean;
+}

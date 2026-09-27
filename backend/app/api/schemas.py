@@ -129,6 +129,19 @@ class SystemInfoResponse(BaseModel):
     active_golden_set: GoldenSetRef | None = None
 
 
+class DemoIndexState(BaseModel):
+    """The demo index relative to the clean corpus, for the simulate-drift panel."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = Field(description="Whether scenarios can be applied here.")
+    document_count: int
+    corpus_size: int
+    missing_documents: int = Field(description="Corpus documents absent from the index.")
+    fragment_documents: int = Field(description="Sentence fragments from a bad re-chunk.")
+    healthy: bool
+
+
 class DashboardSummary(BaseModel):
     """The at-a-glance payload behind the dashboard home screen.
 

@@ -75,6 +75,14 @@ class TestBootstrapAndHealth:
         response = api_client.get(f"{API}/health", headers={"Origin": origin})
         assert response.headers["access-control-allow-origin"] == origin
 
+    def test_demo_controls_are_off_by_default(self, api_client: TestClient) -> None:
+        # They break the index on request, so a deployment must opt in.
+        assert api_client.get(f"{API}/demo").json()["enabled"] is False
+        response = api_client.post(f"{API}/demo/scenarios/delete-documents")
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "demo_disabled"
+        assert api_client.get(f"{API}/demo").json()["missing_documents"] == 0
+
     def test_openapi_schema_is_served(self, api_client: TestClient) -> None:
         schema = api_client.get("/openapi.json").json()
         assert f"{API}/runs" in schema["paths"]

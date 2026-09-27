@@ -37,23 +37,11 @@ from app.repositories.golden_sets import GoldenSetRepository
 from app.repositories.runs import RunRepository
 from app.services.bootstrap import bootstrap
 from app.services.corpus import load_documents, seed_documents
+from app.services.demo_scenarios import BROKEN_DOCUMENTS
 from app.services.drift_service import DriftService
 from app.services.golden_set_service import GoldenSetService
 
 logger = logging.getLogger("seed_demo_history")
-
-#: Documents removed part way through to create a genuine regression. They are
-#: spread across categories so several unrelated queries break at once, which
-#: is what a botched re-index actually looks like.
-BROKEN_DOCUMENTS = [
-    "doc-api-001",
-    "doc-api-002",
-    "doc-auth-003",
-    "doc-security-003",
-    "doc-data-002",
-    "doc-support-003",
-]
-
 
 @dataclass(frozen=True, slots=True)
 class Timeline:

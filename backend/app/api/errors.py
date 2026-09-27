@@ -32,6 +32,7 @@ from app.core.errors import (
 from app.repositories.golden_sets import DuplicateGoldenSetError
 from app.repositories.runs import UnknownMetricError
 from app.services.corpus import CorpusError
+from app.services.demo_scenarios import DemoDisabledError
 from app.services.golden_set_service import (
     GoldenSetNotFoundError,
     NoActiveGoldenSetError,
@@ -43,6 +44,7 @@ logger = logging.getLogger(__name__)
 #: Most specific first - the first matching entry wins.
 _ERROR_MAP: tuple[tuple[type[DriftDetectorError], int, str], ...] = (
     (RunNotFoundError, status.HTTP_404_NOT_FOUND, "run_not_found"),
+    (DemoDisabledError, status.HTTP_403_FORBIDDEN, "demo_disabled"),
     (
         DiagnosticsUnavailableError,
         status.HTTP_404_NOT_FOUND,

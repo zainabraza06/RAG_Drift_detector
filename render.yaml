@@ -48,3 +48,7 @@ projects:
                 value: "true"
               - key: DRIFT_SEED_DEMO_HISTORY
                 value: "true"
+              # Lets visitors break and restore the demo index from the
+              # dashboard, so they can watch drift be detected.
+              - key: DRIFT_DEMO_CONTROLS
+                value: "true"

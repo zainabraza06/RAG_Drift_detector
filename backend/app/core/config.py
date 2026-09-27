@@ -82,6 +82,12 @@ class Settings(BaseSettings):
         description="On a fresh install, index the demo corpus and import the demo "
         "golden set so the dashboard is explorable immediately.",
     )
+    demo_controls: bool = Field(
+        default=False,
+        description="Expose endpoints that break and restore the demo index, so a "
+        "visitor can cause drift and watch it be detected. Never enable against "
+        "a real index.",
+    )
 
     # -- API ------------------------------------------------------------
     # Same reasoning as eval_k_values above.

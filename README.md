@@ -12,6 +12,10 @@
 
 **Live demo: [rag-drift-detector.vercel.app](https://rag-drift-detector.vercel.app)**
 
+> **Try it:** the dashboard's *Simulate drift* panel lets you break the
+> index yourself (delete documents, or botch a re-chunk), run an evaluation,
+> and watch the detector flag the regression and diagnose which kind it is.
+>
 > The demo runs on free hosting. If nobody has used it for a while, the first
 > load takes a minute or two while the API wakes up; the page says so and
 > fills in by itself.
@@ -41,6 +45,10 @@ English what most likely caused it.
   exact test, and one primary metric is fixed in advance. Significance and
   materiality are separate thresholds, and interval coverage is
   [verified by simulation](#coverage-is-verified-not-assumed).
+- **Drift you can cause and watch get caught.** The live demo lets anyone
+  delete documents or botch a re-chunk. The next evaluation is flagged as
+  degraded and diagnosed as a content or a ranking failure, by the same
+  detector a real deployment uses.
 - **Root-cause diagnostics that know they are heuristics.** A pluggable rule
   engine tells a *content* regression (documents missing) apart from a
   *ranking* regression (documents demoted). It never reports a numeric
@@ -54,7 +62,7 @@ English what most likely caused it.
   Every loading, empty and error state is designed, and the UI knows when the
   free-hosted API is still waking up.
 - **Shipped and tested.** It runs self-hosted with Docker Compose and is live
-  on Vercel + Render. There are 281 backend tests and 35 frontend tests.
+  on Vercel + Render. There are 288 backend tests and 39 frontend tests.
 
 ## Tech stack
 
@@ -388,6 +396,11 @@ worth as much to someone debugging as any positive finding, and a report that
 only ever shows hits looks like it is fishing.
 
 ### Two causes, correctly discriminated
+
+Both scenarios can be reproduced from the dashboard's **Simulate drift**
+panel (enabled with `DRIFT_DEMO_CONTROLS=true`), which changes the index the
+way an outside pipeline would and leaves the verdict and diagnosis entirely to
+the detector. `tests/test_demo_scenarios.py` asserts both diagnoses end to end.
 
 Both scenarios below produce a `degraded` verdict with a comparable drop. The
 diagnostics tell them apart — and the *ruled out* lists are mirror images:
@@ -859,6 +872,8 @@ Everything is configurable through `DRIFT_`-prefixed environment variables (see
 | PUT | `/api/golden-sets/{id}` | Replace judgements |
 | POST | `/api/golden-sets/{id}/activate` | Choose the set runs use by default |
 | POST | `/api/golden-sets/import` | Import a JSON/CSV file |
+| GET | `/api/demo` | Demo index state (whether it is broken, and how) |
+| POST | `/api/demo/scenarios/{scenario}` | `delete-documents`, `rechunk` or `restore` (needs `DRIFT_DEMO_CONTROLS`) |
 
 Every error shares one envelope:
 
@@ -882,13 +897,13 @@ cd frontend && npm install && npm run dev # UI on :5173, proxying /api
 Checks:
 
 ```bash
-# Backend — 281 tests, mypy --strict clean across 61 modules
+# Backend — 288 tests, mypy --strict clean across 63 modules
 cd backend
 python -m pytest
 python -m ruff check app tests alembic
 python -m mypy app
 
-# Frontend — 35 tests, TypeScript strict, ESLint clean
+# Frontend — 39 tests, TypeScript strict, ESLint clean
 cd ../frontend
 npm test
 npm run typecheck

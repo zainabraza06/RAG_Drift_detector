@@ -11,6 +11,8 @@
 
 import type {
   DashboardSummary,
+  DemoIndexState,
+  DemoScenario,
   DiagnosticReport,
   DriftAssessment,
   DriftVerdict,
@@ -172,4 +174,9 @@ export const api = {
     request<StoredGoldenSet>(`/golden-sets/${id}/activate`, { method: "POST" }),
   deleteGoldenSet: (id: number) =>
     request<void>(`/golden-sets/${id}`, { method: "DELETE" }),
+
+  // -- Demo ------------------------------------------------------------
+  demoState: () => request<DemoIndexState>("/demo"),
+  applyScenario: (scenario: DemoScenario) =>
+    request<DemoIndexState>(`/demo/scenarios/${scenario}`, { method: "POST" }),
 };

@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.errors import register_exception_handlers
-from app.api.routers import drift, golden_sets, metrics, runs, system
+from app.api.routers import demo, drift, golden_sets, metrics, runs, system
 from app.core.config import Settings, get_settings
 from app.core.factory import build_vector_store
 from app.core.logging import configure_logging
@@ -89,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(metrics.router)
     api.include_router(drift.router)
     api.include_router(golden_sets.router)
+    api.include_router(demo.router)
     app.include_router(api)
 
     return app
