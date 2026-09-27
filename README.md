@@ -148,7 +148,8 @@ docker compose exec backend python -m scripts.seed_demo_history --reset
 ### Hosted: Vercel (dashboard) + Render (API)
 
 **API on Render.** In Render, choose **New → Blueprint** and point it at this
-repository. `render.yaml` defines one free web service built from
+repository. `render.yaml` creates a Render project, `rag-drift-detector`, with a
+`production` environment holding one free web service built from
 `backend/Dockerfile`. When the Blueprint is applied, Render asks for:
 
 - `DRIFT_CORS_ORIGINS`: the Vercel URL, for example
