@@ -2,6 +2,20 @@
 
 **Catch retrieval quality degradation in your RAG system before your users do.**
 
+[![Live demo](https://img.shields.io/badge/live_demo-rag--drift--detector.vercel.app-2563eb)](https://rag-drift-detector.vercel.app)
+[![API docs](https://img.shields.io/badge/API_docs-OpenAPI-0f766e)](https://rag-drift-detector-api.onrender.com/docs)
+![Python](https://img.shields.io/badge/Python-3.12-3776ab)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)
+![React](https://img.shields.io/badge/React-18-61dafb)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+**Live demo: [rag-drift-detector.vercel.app](https://rag-drift-detector.vercel.app)**
+
+> The demo runs on free hosting. If nobody has used it for a while, the first
+> load takes a minute or two while the API wakes up; the page says so and
+> fills in by itself.
+
 Most RAG systems are evaluated once, at build time, and never again. Then the
 corpus grows, documents get re-chunked, someone swaps the embedding model, the
 index goes stale — and retrieval quality decays *silently*. Nothing errors. The
@@ -19,18 +33,39 @@ English what most likely caused it.
 
 ---
 
-## Status
+## Highlights
 
-Built in stages, each one working end to end before the next begins.
+- **Statistically defensible alerts, not thresholds.** Regressions are judged
+  with a paired BCa bootstrap over per-query differences, which gives a
+  confidence interval and a p-value for every metric. Hit rate uses McNemar's
+  exact test, and one primary metric is fixed in advance. Significance and
+  materiality are separate thresholds, and interval coverage is
+  [verified by simulation](#coverage-is-verified-not-assumed).
+- **Root-cause diagnostics that know they are heuristics.** A pluggable rule
+  engine tells a *content* regression (documents missing) apart from a
+  *ranking* regression (documents demoted). It never reports a numeric
+  confidence, and tests enforce that.
+- **Clean, extensible architecture.** A layered FastAPI backend (domain →
+  repositories → services → API) with pluggable vector-store and embedding
+  interfaces, and Alembic migrations as the only source of truth for the
+  schema. The code passes `mypy --strict`.
+- **A production-grade dashboard.** React 18, strict TypeScript, Tailwind and
+  Recharts, with dark mode and a code-split bundle of about 89 kB gzipped.
+  Every loading, empty and error state is designed, and the UI knows when the
+  free-hosted API is still waking up.
+- **Shipped and tested.** It runs self-hosted with Docker Compose and is live
+  on Vercel + Render. There are 281 backend tests and 35 frontend tests.
 
-| Stage | Scope | Status |
-| ----- | ------------------------------------------- | ------ |
-| 1 | Golden eval set + scoring engine | ✅ Done |
-| 2 | Historical tracking (SQLite) + REST API | ✅ Done |
-| 3 | Statistical drift detection | ✅ Done |
-| 4 | Root-cause diagnostics rule engine | ✅ Done |
-| 5 | React + TypeScript dashboard | ✅ Done |
-| 6 | Docker packaging + full documentation | ✅ Done |
+## Tech stack
+
+| Layer | Tools |
+| ------------ | --------------------------------------------------------------- |
+| Backend | Python 3.12, FastAPI, Pydantic, SQLAlchemy, Alembic, SQLite |
+| Statistics | NumPy, SciPy (BCa bootstrap, exact McNemar test) |
+| Vector store | ChromaDB, behind a pluggable connector interface |
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, Recharts |
+| Quality | pytest, Vitest, Testing Library, mypy `--strict`, Ruff, ESLint |
+| Deployment | Docker, Docker Compose, nginx, Render, Vercel, GitHub Actions |
 
 ---
 
@@ -68,318 +103,6 @@ Keeping those two apart is the point; see
 
 The screenshots are generated from a live instance by
 `frontend/scripts/screenshots.mjs`, so they cannot quietly drift out of date.
-
-
----
-
-## Architecture
-
-```mermaid
-flowchart LR
-    GS["Golden set<br/>(JSON / CSV)"] --> SE
-    VS[("Vector store<br/>Chroma")] <--> CN["VectorStoreConnector<br/>(pluggable ABC)"]
-    CN --> SE["Scoring engine"]
-    SE --> M["Recall@k · Precision@k<br/>MRR · NDCG@k"]
-    M --> DB[("SQLite<br/>run history")]
-    DB --> DD["Drift detector<br/>(bootstrap CI)"]
-    DD --> RC["Root-cause<br/>rule engine"]
-    DB --> API["FastAPI"]
-    DD --> API
-    RC --> API
-    API --> UI["React dashboard"]
-```
-
-The dependency direction is the point: the scoring engine depends on the
-`VectorStoreConnector` abstraction and the pure metric functions, never on
-Chroma. Adding Qdrant or pgvector is one new module and a registry entry — no
-change to metrics, drift detection, or the API.
-
-```
-backend/
-├── app/
-│   ├── domain/          value objects (golden set, retrieval, metrics, history)
-│   ├── connectors/      VectorStoreConnector ABC + registry + Chroma impl
-│   ├── embeddings/      EmbeddingProvider ABC + registry + offline hashing impl
-│   ├── db/              SQLAlchemy models, sessions, Alembic helpers
-│   ├── repositories/    SQL lives here; returns domain objects, never ORM rows
-│   ├── services/        business logic (scoring, golden sets, runs, bootstrap)
-│   ├── api/             FastAPI app, routers, schemas, error mapping
-│   ├── core/            config, logging, errors, composition root
-│   └── cli.py           thin adapter over the services
-└── alembic/versions/    migrations — the single source of truth for the schema
-```
-
-Layering is enforced by direction of imports: `api → services → repositories →
-db`, with `domain` depended on by everything and depending on nothing. No route
-handler touches a repository; no repository knows what HTTP is.
-
----
-
-## Quickstart
-
-### With Docker (recommended)
-
-```bash
-git clone https://github.com/zainabraza06/RAG_Drift_detector.git
-cd RAG_Drift_detector
-docker compose up --build
-```
-
-Then open **http://localhost:8080**.
-
-On a fresh volume the backend migrates its schema, indexes the bundled demo
-corpus into Chroma and imports the demo golden set, so the dashboard has
-something to show the moment it loads. Every step is idempotent, so restarts
-are safe. Click **Run evaluation** twice — the second run is the first one that
-has a baseline to compare against.
-
-nginx serves the built UI and proxies `/api` to the backend on the same origin,
-so CORS is not part of the production path at all. Copy `.env.example` to
-`.env` to change the port, the cutoffs, or to start empty against your own
-corpus with `DRIFT_BOOTSTRAP_DEMO=false`.
-
-To populate a history worth looking at — ten runs across twelve days, with a
-deliberate regression part way through:
-
-```bash
-docker compose exec backend python -m scripts.seed_demo_history --reset
-```
-
-### Hosted: Vercel (dashboard) + Render (API)
-
-**API on Render.** In Render, choose **New → Blueprint** and point it at this
-repository. `render.yaml` creates a Render project, `rag-drift-detector`, with a
-`production` environment holding one free web service built from
-`backend/Dockerfile`. When the Blueprint is applied, Render asks for:
-
-- `DRIFT_CORS_ORIGINS`: the Vercel URL, for example
-  `https://rag-drift-detector.vercel.app`. This one is required.
-- `DRIFT_CORS_ORIGIN_REGEX`: optional; set it to also allow Vercel preview
-  deploys.
-
-**Dashboard on Vercel.** Import the repository and set these:
-
-- **Root Directory:** `frontend`
-- **Environment variable:** `VITE_API_URL=https://<service>.onrender.com/api`
-
-`frontend/vercel.json` handles the SPA routing and asset caching.
-
-**Cold starts.** A free Render instance has no disk and sleeps after 15 idle
-minutes, and every wake is a fresh install. The demo is rebuilt on each boot,
-and `DRIFT_SEED_DEMO_HISTORY=true` also regenerates the run history. Two
-things keep the wait away from users:
-
-- **The dashboard wakes the API itself.** It pings `/api/health` as soon as it
-  loads. If the API is asleep, it shows a "Waking the server…" notice and holds
-  **Run evaluation** until the API answers. Once the API is up, anything that
-  failed in the meantime reloads by itself. While a tab stays open, the
-  dashboard pings every 10 minutes so the API doesn't fall asleep mid-session.
-- **A scheduled ping keeps it from sleeping at all.** Set the repository
-  variable `API_HEALTH_URL` to `https://<service>.onrender.com/api/health`, and
-  `.github/workflows/keep-api-awake.yml` pings it every 10 minutes. GitHub can
-  delay scheduled runs, so for tighter coverage use an external pinger such as
-  cron-job.org every 5 minutes. One always-on instance uses about 744 of
-  Render's 750 free hours a month.
-
-### From source
-
-Requires Python 3.11+ and Node 20+.
-
-```bash
-cd backend
-python -m venv .venv
-. .venv/Scripts/activate      # Windows;  source .venv/bin/activate on Unix
-pip install -r requirements-dev.txt
-
-python -m app.cli seed        # index the bundled demo corpus into Chroma
-python -m app.cli evaluate -v # score the golden set and record the run
-python -m app.cli serve       # start the API on http://127.0.0.1:8000
-```
-
-The first database-touching command migrates the schema and imports the demo
-golden set automatically, so there is no separate init step.
-
-Output:
-
-```
-Golden set : acme-cloud-support v1 (ac6007e1dbb45cb2)
-Store      : chroma/drift_demo - 32 documents
-Embeddings : hashing-v1-d384
-Queries    : 30   Duration: 2282 ms
-
-  k   Recall@k   Precision@k      MRR    NDCG@k
------------------------------------------------
-  1     0.8667        0.9333   0.9333    0.9333
-  3     0.9000        0.3222   0.9500    0.9433
-  5     0.9333        0.2067   0.9583    0.9582 *
- 10     0.9833        0.1133   0.9583    0.9622
-
-* primary cutoff (k=5) - the one drift detection tests
-```
-
-Other commands:
-
-```bash
-python -m app.cli info                     # resolved config + index status
-python -m app.cli history                  # recorded runs, newest first
-python -m app.cli db status                # current vs head schema revision
-python -m app.cli import-golden-set FILE   # store a JSON/CSV set in the database
-python -m app.cli golden-set --check-index # validate a golden set against the index
-python -m app.cli evaluate --no-save       # score without recording history
-```
-
-Everything is configurable through `DRIFT_`-prefixed environment variables (see
-`backend/app/core/config.py`), e.g. `DRIFT_CHROMA_COLLECTION`,
-`DRIFT_EVAL_K_VALUES=1,5,20`, `DRIFT_EVAL_PRIMARY_K=5`.
-
----
-
-## REST API
-
-`python -m app.cli serve` — interactive docs at `/docs`, OpenAPI at
-`/openapi.json`.
-
-| Method | Path | Purpose |
-| ------ | ------------------------------ | ---------------------------------- |
-| GET | `/api/health` | Liveness; 503 if the DB or vector store is down |
-| GET | `/api/system/info` | Resolved config, schema revision, index status |
-| GET | `/api/dashboard` | Everything the home screen needs, in one request |
-| POST | `/api/runs` | **Run an evaluation now** |
-| GET | `/api/runs` | Paginated history, newest first |
-| GET | `/api/runs/latest` | Most recent run, or `null` |
-| GET | `/api/runs/{id}` | One run's aggregate metrics |
-| GET | `/api/runs/{id}/queries` | Per-query breakdown at the primary cutoff |
-| DELETE | `/api/runs/{id}` | Delete a run |
-| GET | `/api/metrics/trends?k=5` | All four metrics over time, one request |
-| GET | `/api/metrics/series?metric=&k=` | One metric over time |
-| GET | `/api/metrics/cutoffs` | Cutoffs that actually have data |
-| GET | `/api/runs/{id}/drift` | Statistical drift assessment for a run |
-| GET | `/api/drift/events` | Past assessments, filterable by verdict |
-| GET | `/api/drift/latest` | Most recent assessment |
-| GET | `/api/runs/{id}/diagnostics` | Heuristic root-cause report for a regression |
-| GET/POST | `/api/golden-sets` | List / create |
-| PUT | `/api/golden-sets/{id}` | Replace judgements |
-| POST | `/api/golden-sets/{id}/activate` | Choose the set runs use by default |
-| POST | `/api/golden-sets/import` | Import a JSON/CSV file |
-
-Every error shares one envelope:
-
-```json
-{ "error": { "code": "run_not_found", "message": "run 'abc' not found" } }
-```
-
-Clients branch on `code`; `message` wording is free to change.
-
----
-
-## Running it
-
-```bash
-docker compose up --build
-open http://localhost:8080
-```
-
-That is the whole quickstart. On a fresh volume the backend migrates the
-schema, indexes the bundled demo corpus into Chroma and imports the demo
-golden set, so the dashboard has something real to show on first load. Every
-step is idempotent, so restarts are safe.
-
-Three services: **nginx** serving the built SPA and proxying `/api`,
-**FastAPI** holding the run history in SQLite, and **Chroma** as the vector
-store. The API is not published — nginx is the only thing that needs to reach
-it, and exposing it would give the UI two different origins and drag CORS into
-the production path for no reason.
-
-### Why Chroma runs as a server
-
-This is a correctness requirement rather than a deployment preference, and it
-is the single most important thing in the compose file.
-
-`chromadb`'s `PersistentClient` caches a collection's vector segment in memory
-for the life of the process and does not observe another process's writes.
-Reopening the client does not help — the underlying `System` is cached per
-path. A drift detector reads an index that some *other* pipeline writes, so an
-embedded client would keep scoring the index as it looked when the API booted
-and would **never notice the change it exists to detect**. A server is the
-single owner of the index; every writer and reader goes through it.
-
-### Giving the demo a history worth looking at
-
-One run is not a trend, and drift detection needs a baseline:
-
-```bash
-docker compose exec backend python -m scripts.seed_demo_history --reset
-```
-
-This runs *real* evaluations against the *real* index and deliberately deletes
-six expected documents part way through, producing a genuine regression with
-genuine intervals and diagnostics. The only thing simulated is *when* the runs
-happened — they are stamped across the past twelve days so the trend charts
-have a readable axis instead of a dozen points inside one minute.
-
-### Configuration
-
-Copy `.env.example` to `.env` to override defaults. Set
-`DRIFT_BOOTSTRAP_DEMO=false` to start empty against your own corpus, which is
-what a real deployment wants.
-
----
-
-## Dashboard
-
-```bash
-cd backend && python -m app.cli serve     # API on :8000
-cd frontend && npm install && npm run dev # UI on :5173, proxying /api
-```
-
-Four views: **Dashboard** (health, headline metrics, run action), **Trends**
-(four charts with regressions marked in place), **Drift events** (expandable
-timeline with full statistical reasoning), **Golden set** (validated editor).
-
-React 18 + TypeScript strict + Tailwind + Recharts, with dark mode, a
-responsive shell, and route-level code splitting that keeps the initial bundle
-at ~89 kB gzipped by deferring Recharts to the trends route.
-
-### The framing boundary is enforced in the UI too
-
-The care taken in Stages 3 and 4 would be wasted if the interface flattened it
-back out, so the two halves are kept visually and structurally apart:
-
-* The statistical verdict and the heuristic diagnostics are **separate
-  components** in separate sections, never one merged list.
-* The diagnostics panel's *"these are heuristics, not statistical findings"*
-  notice sits **above** the findings. A disclaimer below the conclusions is
-  read after they have already landed. There is a test asserting the document
-  order.
-* Evidence strength renders as a **word** — `Direct`, `Circumstantial`,
-  `Context` — never a bar or a percentage. A test fails if a `progressbar` or
-  a "% confident" string ever appears in the rendered tree, because that is
-  precisely how a numeric confidence would sneak back in.
-* A finding that cannot honestly count queries shows **no** coverage figure
-  rather than a fabricated one.
-* "Ruled out" and "could not check" stay visually distinct.
-
-### Other decisions worth noting
-
-**"Unknown" is not green.** A system never compared against a baseline is not
-*known* to be healthy, so the traffic light shows grey, matching the backend.
-
-**Significance and materiality are shown separately.** A change can be
-statistically real and operationally irrelevant; a UI that merged them into one
-badge would hide the distinction the detector is careful to make.
-
-**Deltas are in points, not percent.** "Recall fell 4.2%" is ambiguous between
-an absolute and a relative change.
-
-**Chart axes are padded, not pinned to [0, 1].** Retrieval metrics sit in a
-narrow band near the top, and a full-range axis flattens exactly the movement
-this tool exists to surface — but the axis never exceeds [0, 1], so a shape
-cannot read as more dramatic than it is.
-
-**Every state is designed.** Skeletons mirror the shape of what they replace so
-the layout does not jump; empty states say what to do next; error states use
-the API's error `code` to say something specific and offer retry only when
-retrying could help.
 
 ---
 
@@ -586,7 +309,7 @@ care taken in the section above.
 
 ### The boundary, stated plainly
 
-| | Drift detection (Stage 3) | Diagnostics (Stage 4) |
+| | Drift detection | Diagnostics |
 | ---------- | ---------------------------------- | ---------------------------------- |
 | Question | *Did quality really change?* | *What plausibly caused it?* |
 | Method | Paired bootstrap, exact McNemar | Heuristic checks over recorded facts |
@@ -704,76 +427,99 @@ only when the expected documents are *verifiably still in the index*.
 
 ---
 
-## How it is packaged
+## Architecture
 
-```
-┌─ frontend (nginx :80) ──────────────┐
-│  /            → built React SPA     │
-│  /api/*       → proxy to backend    │   one origin, so no CORS in production
-│  /docs        → proxy to backend    │
-└──────────────┬──────────────────────┘
-               │ docker network
-┌──────────────▼──────────────────────┐
-│  backend (uvicorn :8000)            │
-│  FastAPI · SQLAlchemy · SciPy       │
-│  /app/data ──► drift-data volume    │   run history (SQLite)
-└──────────────┬──────────────────────┘
-               │ HTTP
-┌──────────────▼──────────────────────┐
-│  chroma (server :8000)              │
-│  /data ──────► chroma-data volume   │   the vector index
-└─────────────────────────────────────┘
+```mermaid
+flowchart LR
+    GS["Golden set<br/>(JSON / CSV)"] --> SE
+    VS[("Vector store<br/>Chroma")] <--> CN["VectorStoreConnector<br/>(pluggable ABC)"]
+    CN --> SE["Scoring engine"]
+    SE --> M["Recall@k · Precision@k<br/>MRR · NDCG@k"]
+    M --> DB[("SQLite<br/>run history")]
+    DB --> DD["Drift detector<br/>(bootstrap CI)"]
+    DD --> RC["Root-cause<br/>rule engine"]
+    DB --> API["FastAPI"]
+    DD --> API
+    RC --> API
+    API --> UI["React dashboard"]
 ```
 
-### Why Chroma runs as a server and not as an embedded client
-
-This is a correctness requirement, not a preference, and it is the single most
-important thing to understand about deploying this tool.
-
-`chromadb.PersistentClient` caches a collection's vector segment in memory for
-the life of the process, and does **not** observe writes made by another
-process. Reopening the client does not help either — chromadb caches the
-underlying `System` per path, so a "fresh" client hands back the same stale
-segment.
-
-A drift detector reads an index that some *other* pipeline writes. With an
-embedded client it would keep scoring the index as it looked when the API
-booted, and would never notice the change it exists to detect — while still
-reporting a correct document count, because `count()` reads metadata rather
-than the cached segment. That combination is worse than an outright failure:
-the numbers look plausible and are silently wrong.
-
-Measured, with the index served by a Chroma server and six expected documents
-deleted by a separate process:
+The dependency direction is the point: the scoring engine depends on the
+`VectorStoreConnector` abstraction and the pure metric functions, never on
+Chroma. Adding Qdrant or pgvector is one new module and a registry entry — no
+change to metrics, drift detection, or the API.
 
 ```
-run 1   docs=32   recall@5=0.9333      # healthy
-                                       # another process deletes 6 documents
-run 2   docs=26   recall@5=0.7667      # detected
+backend/
+├── app/
+│   ├── domain/          value objects (golden set, retrieval, metrics, history)
+│   ├── connectors/      VectorStoreConnector ABC + registry + Chroma impl
+│   ├── embeddings/      EmbeddingProvider ABC + registry + offline hashing impl
+│   ├── db/              SQLAlchemy models, sessions, Alembic helpers
+│   ├── repositories/    SQL lives here; returns domain objects, never ORM rows
+│   ├── services/        business logic (scoring, golden sets, runs, bootstrap)
+│   ├── api/             FastAPI app, routers, schemas, error mapping
+│   ├── core/            config, logging, errors, composition root
+│   └── cli.py           thin adapter over the services
+└── alembic/versions/    migrations — the single source of truth for the schema
 ```
 
-With the embedded client, `run 2` returned `docs=26` and `recall@5=0.9333` —
-the count moved, the retrieval did not.
+Layering is enforced by direction of imports: `api → services → repositories →
+db`, with `domain` depended on by everything and depending on nothing. No route
+handler touches a repository; no repository knows what HTTP is.
 
-If you point this tool at your own index, use a Chroma server
-(`DRIFT_CHROMA_MODE=http`). The embedded `persistent` mode is only safe when
-nothing else writes the index, which in practice means local development and
-the test suite.
+---
 
-Both images are multi-stage and copy dependency manifests before source, so a
-code change does not invalidate the slow install layer. The backend runs as an
-unprivileged user with the data directory as its only writable path.
+## Dashboard design
 
-The backend's healthcheck calls its own `/api/health`, which returns 503 when
-the database or the vector store is unreachable — so it reports genuine
-readiness rather than merely that a process is listening. The frontend waits
-for `service_healthy`, not `service_started`, so the first page load never
-races the migrations and the demo bootstrap.
+Four views: **Dashboard** (health, headline metrics, run action), **Trends**
+(four charts with regressions marked in place), **Drift events** (expandable
+timeline with full statistical reasoning), **Golden set** (validated editor).
 
-Both SQLite and the Chroma index live under one directory, so a single named
-volume is the whole persistence story. `docker compose down -v` resets
-everything.
+React 18 + TypeScript strict + Tailwind + Recharts, with dark mode, a
+responsive shell, and route-level code splitting that keeps the initial bundle
+at ~89 kB gzipped by deferring Recharts to the trends route.
 
+### The framing boundary is enforced in the UI too
+
+The care taken in drift detection and diagnostics would be wasted if the interface flattened it
+back out, so the two halves are kept visually and structurally apart:
+
+* The statistical verdict and the heuristic diagnostics are **separate
+  components** in separate sections, never one merged list.
+* The diagnostics panel's *"these are heuristics, not statistical findings"*
+  notice sits **above** the findings. A disclaimer below the conclusions is
+  read after they have already landed. There is a test asserting the document
+  order.
+* Evidence strength renders as a **word** — `Direct`, `Circumstantial`,
+  `Context` — never a bar or a percentage. A test fails if a `progressbar` or
+  a "% confident" string ever appears in the rendered tree, because that is
+  precisely how a numeric confidence would sneak back in.
+* A finding that cannot honestly count queries shows **no** coverage figure
+  rather than a fabricated one.
+* "Ruled out" and "could not check" stay visually distinct.
+
+### Other decisions worth noting
+
+**"Unknown" is not green.** A system never compared against a baseline is not
+*known* to be healthy, so the traffic light shows grey, matching the backend.
+
+**Significance and materiality are shown separately.** A change can be
+statistically real and operationally irrelevant; a UI that merged them into one
+badge would hide the distinction the detector is careful to make.
+
+**Deltas are in points, not percent.** "Recall fell 4.2%" is ambiguous between
+an absolute and a relative change.
+
+**Chart axes are padded, not pinned to [0, 1].** Retrieval metrics sit in a
+narrow band near the top, and a full-range axis flattens exactly the movement
+this tool exists to surface — but the axis never exceeds [0, 1], so a shape
+cannot read as more dramatic than it is.
+
+**Every state is designed.** Skeletons mirror the shape of what they replace so
+the layout does not jump; empty states say what to do next; error states use
+the API's error `code` to say something specific and offer retry only when
+retrying could help.
 
 ---
 
@@ -877,7 +623,7 @@ than delegating to Chroma's built-in embedding function. Two reasons:
 1. **Silently swapping embedding models is one of the most common real causes of
    retrieval drift.** Making the provider explicit means every run records a
    `model_id`, and the collection records the model that *built* it — so a
-   mismatch between them is detectable rather than invisible (Stage 4).
+   mismatch between them is detectable rather than invisible (see diagnostics).
 2. **The demo has to run with zero setup.** The default `hashing` provider is a
    deterministic, dependency-free implementation of the hashing trick (signed
    feature hashing over word unigrams, word bigrams and character trigrams;
@@ -890,16 +636,259 @@ recorded `model_id` makes the swap visible.
 
 ---
 
-## Development
+## How it is packaged
+
+```
+┌─ frontend (nginx :80) ──────────────┐
+│  /            → built React SPA     │
+│  /api/*       → proxy to backend    │   one origin, so no CORS in production
+│  /docs        → proxy to backend    │
+└──────────────┬──────────────────────┘
+               │ docker network
+┌──────────────▼──────────────────────┐
+│  backend (uvicorn :8000)            │
+│  FastAPI · SQLAlchemy · SciPy       │
+│  /app/data ──► drift-data volume    │   run history (SQLite)
+└──────────────┬──────────────────────┘
+               │ HTTP
+┌──────────────▼──────────────────────┐
+│  chroma (server :8000)              │
+│  /data ──────► chroma-data volume   │   the vector index
+└─────────────────────────────────────┘
+```
+
+### Why Chroma runs as a server and not as an embedded client
+
+This is a correctness requirement, not a preference, and it is the single most
+important thing to understand about deploying this tool.
+
+`chromadb.PersistentClient` caches a collection's vector segment in memory for
+the life of the process, and does **not** observe writes made by another
+process. Reopening the client does not help either — chromadb caches the
+underlying `System` per path, so a "fresh" client hands back the same stale
+segment.
+
+A drift detector reads an index that some *other* pipeline writes. With an
+embedded client it would keep scoring the index as it looked when the API
+booted, and would never notice the change it exists to detect — while still
+reporting a correct document count, because `count()` reads metadata rather
+than the cached segment. That combination is worse than an outright failure:
+the numbers look plausible and are silently wrong.
+
+Measured, with the index served by a Chroma server and six expected documents
+deleted by a separate process:
+
+```
+run 1   docs=32   recall@5=0.9333      # healthy
+                                       # another process deletes 6 documents
+run 2   docs=26   recall@5=0.7667      # detected
+```
+
+With the embedded client, `run 2` returned `docs=26` and `recall@5=0.9333` —
+the count moved, the retrieval did not.
+
+If you point this tool at your own index, use a Chroma server
+(`DRIFT_CHROMA_MODE=http`). The embedded `persistent` mode is only safe when
+nothing else writes the index, which in practice means local development and
+the test suite.
+
+Both images are multi-stage and copy dependency manifests before source, so a
+code change does not invalidate the slow install layer. The backend runs as an
+unprivileged user with the data directory as its only writable path.
+
+The backend's healthcheck calls its own `/api/health`, which returns 503 when
+the database or the vector store is unreachable — so it reports genuine
+readiness rather than merely that a process is listening. The frontend waits
+for `service_healthy`, not `service_started`, so the first page load never
+races the migrations and the demo bootstrap.
+
+Both SQLite and the Chroma index live under one directory, so a single named
+volume is the whole persistence story. `docker compose down -v` resets
+everything.
+
+---
+
+## Quickstart
+
+### With Docker (recommended)
 
 ```bash
-# Backend — 279 tests, mypy --strict clean across 62 modules
+git clone https://github.com/zainabraza06/RAG_Drift_detector.git
+cd RAG_Drift_detector
+docker compose up --build
+```
+
+Then open **http://localhost:8080**.
+
+On a fresh volume the backend migrates its schema, indexes the bundled demo
+corpus into Chroma and imports the demo golden set, so the dashboard has
+something to show the moment it loads. Every step is idempotent, so restarts
+are safe. Click **Run evaluation** twice — the second run is the first one that
+has a baseline to compare against.
+
+nginx serves the built UI and proxies `/api` to the backend on the same origin,
+so CORS is not part of the production path at all. Copy `.env.example` to
+`.env` to change the port, the cutoffs, or to start empty against your own
+corpus with `DRIFT_BOOTSTRAP_DEMO=false`.
+
+To populate a history worth looking at — ten runs across twelve days, with a
+deliberate regression part way through:
+
+```bash
+docker compose exec backend python -m scripts.seed_demo_history --reset
+```
+
+### Hosted: Vercel (dashboard) + Render (API)
+
+**API on Render.** In Render, choose **New → Blueprint** and point it at this
+repository. `render.yaml` creates a Render project, `rag-drift-detector`, with a
+`production` environment holding one free web service built from
+`backend/Dockerfile`. When the Blueprint is applied, Render asks for:
+
+- `DRIFT_CORS_ORIGINS`: the Vercel URL, for example
+  `https://rag-drift-detector.vercel.app`. This one is required.
+- `DRIFT_CORS_ORIGIN_REGEX`: optional; set it to also allow Vercel preview
+  deploys.
+
+**Dashboard on Vercel.** Import the repository and set these:
+
+- **Root Directory:** `frontend`
+- **Environment variable:** `VITE_API_URL=https://<service>.onrender.com/api`
+
+`frontend/vercel.json` handles the SPA routing and asset caching.
+
+**Cold starts.** A free Render instance has no disk and sleeps after 15 idle
+minutes, and every wake is a fresh install. The demo is rebuilt on each boot,
+and `DRIFT_SEED_DEMO_HISTORY=true` also regenerates the run history. Two
+things keep the wait away from users:
+
+- **The dashboard wakes the API itself.** It pings `/api/health` as soon as it
+  loads. If the API is asleep, it shows a "Waking the server…" notice and holds
+  **Run evaluation** until the API answers. Once the API is up, anything that
+  failed in the meantime reloads by itself. While a tab stays open, the
+  dashboard pings every 10 minutes so the API doesn't fall asleep mid-session.
+- **A scheduled ping keeps it from sleeping at all.** Set the repository
+  variable `API_HEALTH_URL` to `https://<service>.onrender.com/api/health`, and
+  `.github/workflows/keep-api-awake.yml` pings it every 10 minutes. GitHub can
+  delay scheduled runs, so for tighter coverage use an external pinger such as
+  cron-job.org every 5 minutes. One always-on instance uses about 744 of
+  Render's 750 free hours a month.
+
+The hosted API runs Chroma embedded rather than as a server. That is safe here
+because the API is the only process that writes the index; pointed at an index
+another pipeline writes, it needs a Chroma server (see
+[packaging](#why-chroma-runs-as-a-server-and-not-as-an-embedded-client)).
+
+### From source
+
+Requires Python 3.11+ and Node 20+.
+
+```bash
+cd backend
+python -m venv .venv
+. .venv/Scripts/activate      # Windows;  source .venv/bin/activate on Unix
+pip install -r requirements-dev.txt
+
+python -m app.cli seed        # index the bundled demo corpus into Chroma
+python -m app.cli evaluate -v # score the golden set and record the run
+python -m app.cli serve       # start the API on http://127.0.0.1:8000
+```
+
+The first database-touching command migrates the schema and imports the demo
+golden set automatically, so there is no separate init step.
+
+Output:
+
+```
+Golden set : acme-cloud-support v1 (ac6007e1dbb45cb2)
+Store      : chroma/drift_demo - 32 documents
+Embeddings : hashing-v1-d384
+Queries    : 30   Duration: 2282 ms
+
+  k   Recall@k   Precision@k      MRR    NDCG@k
+-----------------------------------------------
+  1     0.8667        0.9333   0.9333    0.9333
+  3     0.9000        0.3222   0.9500    0.9433
+  5     0.9333        0.2067   0.9583    0.9582 *
+ 10     0.9833        0.1133   0.9583    0.9622
+
+* primary cutoff (k=5) - the one drift detection tests
+```
+
+Other commands:
+
+```bash
+python -m app.cli info                     # resolved config + index status
+python -m app.cli history                  # recorded runs, newest first
+python -m app.cli db status                # current vs head schema revision
+python -m app.cli import-golden-set FILE   # store a JSON/CSV set in the database
+python -m app.cli golden-set --check-index # validate a golden set against the index
+python -m app.cli evaluate --no-save       # score without recording history
+```
+
+Everything is configurable through `DRIFT_`-prefixed environment variables (see
+`backend/app/core/config.py`), e.g. `DRIFT_CHROMA_COLLECTION`,
+`DRIFT_EVAL_K_VALUES=1,5,20`, `DRIFT_EVAL_PRIMARY_K=5`.
+
+---
+
+## REST API
+
+`python -m app.cli serve` — interactive docs at `/docs`, OpenAPI at
+`/openapi.json`.
+
+| Method | Path | Purpose |
+| ------ | ------------------------------ | ---------------------------------- |
+| GET | `/api/health` | Liveness; 503 if the DB or vector store is down |
+| GET | `/api/system/info` | Resolved config, schema revision, index status |
+| GET | `/api/dashboard` | Everything the home screen needs, in one request |
+| POST | `/api/runs` | **Run an evaluation now** |
+| GET | `/api/runs` | Paginated history, newest first |
+| GET | `/api/runs/latest` | Most recent run, or `null` |
+| GET | `/api/runs/{id}` | One run's aggregate metrics |
+| GET | `/api/runs/{id}/queries` | Per-query breakdown at the primary cutoff |
+| DELETE | `/api/runs/{id}` | Delete a run |
+| GET | `/api/metrics/trends?k=5` | All four metrics over time, one request |
+| GET | `/api/metrics/series?metric=&k=` | One metric over time |
+| GET | `/api/metrics/cutoffs` | Cutoffs that actually have data |
+| GET | `/api/runs/{id}/drift` | Statistical drift assessment for a run |
+| GET | `/api/drift/events` | Past assessments, filterable by verdict |
+| GET | `/api/drift/latest` | Most recent assessment |
+| GET | `/api/runs/{id}/diagnostics` | Heuristic root-cause report for a regression |
+| GET/POST | `/api/golden-sets` | List / create |
+| PUT | `/api/golden-sets/{id}` | Replace judgements |
+| POST | `/api/golden-sets/{id}/activate` | Choose the set runs use by default |
+| POST | `/api/golden-sets/import` | Import a JSON/CSV file |
+
+Every error shares one envelope:
+
+```json
+{ "error": { "code": "run_not_found", "message": "run 'abc' not found" } }
+```
+
+Clients branch on `code`; `message` wording is free to change.
+
+---
+
+## Development
+
+Run the API and the dashboard separately, with hot reload:
+
+```bash
+cd backend && python -m app.cli serve     # API on :8000
+cd frontend && npm install && npm run dev # UI on :5173, proxying /api
+```
+
+Checks:
+
+```bash
+# Backend — 281 tests, mypy --strict clean across 61 modules
 cd backend
 python -m pytest
 python -m ruff check app tests alembic
 python -m mypy app
 
-# Frontend — 29 tests, TypeScript strict, ESLint clean
+# Frontend — 35 tests, TypeScript strict, ESLint clean
 cd ../frontend
 npm test
 npm run typecheck
